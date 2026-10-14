@@ -1,0 +1,39 @@
+# Local environments and configuration
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+.python-version
+
+# Python artifacts and caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Credentials and local cloud configuration
+.aws/
+.config/gcloud/
+credentials/
+secrets/
+credentials*.json
+*credentials*.json
+*service-account*.json
+*service_account*.json
+*.pem
+*.key
+.netrc
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/

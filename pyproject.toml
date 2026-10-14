@@ -5,10 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ci-investigator"
 version = "0.1.0"
-description = "Offline foundations for evidence-based GitHub Actions investigations"
+description = "Bounded GitHub Actions collection and evidence-based investigation foundations"
 readme = "README.md"
 requires-python = ">=3.11"
-dependencies = ["pydantic>=2.0,<3"]
+dependencies = ["pydantic>=2.0,<3", "httpx>=0.27,<1"]
+
+[project.scripts]
+ci-investigator = "ci_investigator.cli:main"
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<9", "ruff>=0.9,<1"]

@@ -598,3 +598,117 @@ formats, and obfuscation can still defeat pattern matching. Malformed quoted
 input may cause conservative same-line context removal. There is no guarantee of
 detecting arbitrary secrets or of safety for external transmission. Existing
 incomplete-evidence and prompt-injection boundaries remain; no diagnosis is added.
+
+## 2026-10-15 — Task 5: Gemini diagnosis via Vertex AI
+
+### Inspection, scope, and trust decisions
+
+Read the current schemas, collection/client, evidence preparation/extraction,
+redactor, source/reference validators, CLI, tests/fixtures, project metadata,
+README, architecture, and development log before implementation. The existing
+modified review ZIP was preserved. Described the plan and trust boundaries before
+editing: pipeline-sanitized prepared evidence is the only model context; Gemini
+returns a non-authoritative draft; trusted application code supplies evidence and
+run identity and deterministically checks references. Existing models and tests
+were preserved. No Streamlit, autonomous code modification, commit, or push was
+added. The successful Vertex connection mentioned in the task is user-reported;
+it was not repeated here and does not verify this new diagnosis path.
+
+### Implementation
+
+- Added `gemini_client.py` using official `google-genai`, Vertex AI and ADC, with
+  configurable project/location/model, stable API/Google endpoints, bounded HTTP
+  timeouts and output tokens, one SDK request attempt, no model tools, explicit
+  resource cleanup, and application-authored non-sensitive errors. Credential-file
+  configuration is refused; no API key or service account JSON flow was added.
+- Added `diagnosis_schemas.py` for a strict bounded `DiagnosisDraft`, without any
+  authoritative evidence, source, workflow, or commit fields.
+- Added `diagnosis_prompt.py`, version `ci-diagnosis-v1`: system instructions and
+  a separate deterministic JSON envelope of untrusted evidence. Send selected
+  sanitized excerpts and necessary identity/source metadata, warnings/limitations,
+  and incompleteness flags only. Additional context/metadata limits fail closed
+  without rewriting excerpts or silently dropping warnings.
+- Added `diagnosis_engine.py`: local abstention before Gemini initialization for
+  no failed jobs or insufficient evidence; strict JSON/schema/reference checks;
+  report assembly from trusted package records; existing reference validation;
+  additive pipeline/model limitations; and no high-confidence hypotheses with
+  incomplete context. Generated descriptive text gets best-effort redaction.
+  At most one fresh request can follow a complete invalid draft. Service and
+  unusable-response errors are not retried; no rejected text is fed back.
+- Extended the CLI with both `--ai-diagnose` and `--allow-external-ai`. Invalid or
+  missing consent fails before collection. AI mode independently revalidates
+  provenance, uses the trusted collection failure gate, prints accepted report
+  JSON or safe errors, and saves no source data. Existing collection/preview modes
+  remain available. SDK initialization does not occur for local abstention.
+- Added `scripts/gemini_smoke_test.py`: explicit consent flag, only synthetic
+  collection in memory, preparation/provenance checks, and response retries set
+  to zero. No GitHub request or repository-source read occurs. The README gives
+  exact live instructions and describes what a successful run leaves unverified.
+- Added `google-genai>=1.55,<3`; updated README, architecture and `.env.example`
+  with ADC configuration, schema/prompt decisions, consent, request/token costs,
+  failure handling, deterministic guarantees and residual limitations.
+
+### Actual verification and corrections
+
+The existing `.venv` has broken Python 3.11 links; its working Python 3.12 entry
+also lacked pytest. Used an isolated Python 3.12.10 environment under `/private/tmp`
+instead of changing it. The initial sandboxed dependency install failed on DNS
+access to build dependencies. An approved network retry of
+`python -m pip install -e ".[dev]"` succeeded, installing `google-genai 2.31.0`,
+Pydantic 2.14.1, pytest 8.4.2, and Ruff 0.17.0. Package installation/documentation
+lookup were network operations; diagnosis verification itself remained offline.
+
+- The first run of the unchanged existing suite after initial integration passed
+  **459 tests in 1.51s**. Ruff found nine new long lines; they were corrected.
+- The first new targeted run recorded **2 failed, 89 passed in 1.22s**. Both were
+  fixture mistakes: an allegedly raw-only marker was repeated into the pipeline's
+  legitimate five-line context window, and a success test used a nonexistent
+  fixture attribute. Corrected the marker placement and fixture reference. No
+  change to evidence selection or collection behavior was needed.
+- The resulting full suite passed **550 tests in 1.44s**, with Ruff clean.
+- Review tightened candidate handling to reject mixed text/non-text parts, even
+  when a part also contains usable text. Added a regression with executable-code
+  metadata; nothing executes. This was a preventive implementation correction,
+  not an independently reproduced historical incident.
+- Added a smoke-script regression proving missing consent makes no call and
+  malformed output cannot trigger a second generation request. A subsequent full
+  run passed **552 tests in 1.34s**; Ruff and `git diff --check` passed.
+- Separately installed `google-genai 1.55.0` without dependencies under a temporary
+  path and ran the SDK boundary suite using that version: **28 passed in 0.41s**.
+  This exercises real SDK serialization and mocked HTTP, not live Vertex schema
+  acceptance. Main verification uses SDK 2.31.0.
+- CLI and smoke-script `--help` checks passed without network/ADC initialization.
+
+New tests cover deterministic prompt contents, no raw-source/known-secret leakage,
+context bounds, source references, strict draft shape/labels/fields, unknown/missing/
+duplicate evidence references, duplicate JSON keys, malformed/empty/oversized output,
+bounded fresh retries, ADC/permission/quota/timeout/network/SDK errors, blocked and
+unfinished candidates, prompt injection with invalid references, immutable trusted
+report records, additive truncation/warning limitations, confidence policy, local
+abstention, consent, CLI integration, and synthetic smoke gating. Real SDK calls
+are routed through `httpx.MockTransport`, asserting ADC headers, schema, endpoint,
+and exactly one generation request on quota failure. The existing socket/DNS guard
+remains active. No Google credentials were needed, no Gemini call was made, and no
+repository logs were transmitted externally.
+
+### Remaining limitations and unverified behavior
+
+No live diagnosis-path request, real project permission check, server schema
+acceptance, billing measurement, or live model-quality/injection evaluation was
+performed. Python 3.11 execution and remote GitHub Actions were not run in this
+session; the existing workflow still targets 3.11. The README's separately
+authorized synthetic smoke checks one request only, not real-repository accuracy.
+
+Redaction may miss secrets. Model prose can still follow malicious suggestions or
+cite irrelevant valid evidence; schema/reference checks cannot certify truth or
+causality. Confidence labels are qualitative. Incomplete data can support an
+incorrect medium-confidence explanation. Pipeline extraction/collection limits,
+commit/checkout differences, and earlier SSRF/DNS caveats still apply. Library
+callers must obtain consent and independently validate provenance before diagnosis.
+
+Character limits are not exact token or cost estimates; schema/system instructions
+and model thinking add token usage. The optional validation retry can double
+requests. SDK timeout settings bound HTTP operations, not a hard wall-clock deadline
+for ADC discovery/refresh or the full command. Response character checks run after
+SDK decoding. No model tools, caching, automatic file changes, or unbounded loop
+was introduced. Changes are left uncommitted for independent review.

@@ -1,8 +1,9 @@
 # CI Investigator
 
 An AI-powered GitHub Actions failure investigation tool. The foundation, read-only
-GitHub collection, and deterministic evidence preparation are implemented.
-Python 3.11+ is required. Gemini reasoning and Streamlit remain future work.
+GitHub collection, deterministic evidence preparation, and opt-in Gemini diagnosis
+through Vertex AI are implemented. Python 3.11+ is required. No UI or autonomous
+code modification is implemented.
 
 ## Install and test
 
@@ -47,7 +48,7 @@ Export that variable in your shell when authentication is needed. Fine-grained
 tokens need repository **Actions: read** and **Contents: read** permissions; classic
 tokens need `repo` for private repositories. Some resources can still be hidden,
 expired, unavailable, or rate-limited. The package does not automatically load
-`.env`, and it does not use Google credentials.
+`.env`. Collection and evidence previews do not use Google credentials.
 
 Library callers can inject an HTTP transport and own the client lifetime:
 
@@ -160,6 +161,128 @@ yield `insufficient_evidence`. Missing files/logs, truncation, collection warnin
 and processing omissions remain visible. Logs and configuration are untrusted data:
 embedded instructions have no authority. No root cause or confidence is generated.
 
+## Diagnose with Gemini through Vertex AI
+
+Configure Application Default Credentials (ADC), using your existing setup or
+`gcloud auth application-default login`. The identity needs Vertex AI access in
+the selected project, with billing and the Vertex AI API enabled. This integration
+uses the official `google-genai` SDK with `vertexai=True`; it does not use Gemini
+API keys, Google AI Studio authentication, or service account JSON files.
+`GOOGLE_APPLICATION_CREDENTIALS` must be unset for this MVP. No credentials are
+read or printed by application code; credential discovery/refresh belongs to ADC.
+
+```sh
+export GOOGLE_CLOUD_PROJECT=drivernets
+export GOOGLE_CLOUD_LOCATION=global
+export VERTEX_AI_MODEL=gemini-2.5-flash
+# Optional: VERTEX_AI_TIMEOUT_MS=60000, VERTEX_AI_MAX_OUTPUT_TOKENS=4096
+
+# First inspect sanitized evidence locally:
+ci-investigator "https://github.com/OWNER/REPO/actions/runs/RUN_ID" --preview-evidence
+# This invocation explicitly authorizes external transmission and possible charges:
+ci-investigator "https://github.com/OWNER/REPO/actions/runs/RUN_ID" --ai-diagnose --allow-external-ai
+```
+
+**Redaction is best-effort.** Review the preview and your organization's data policy
+before opting in: unknown or obfuscated secrets may remain. Both AI flags are
+required; missing consent fails before collection. Preview and metadata commands
+never call Gemini. AI and preview flags cannot be combined. The application does
+not log or persist prompts, raw responses, or full sources by default.
+
+Defaults above can be changed through the process environment or `GeminiConfig`.
+Timeouts are bounded to 1–120 seconds per generation request; output to 512–8,192
+tokens (default 4,096), followed by a 32,000-character response check. SDK retries
+are disabled. One fresh generation can follow a complete draft that fails local
+validation; rejected output is never fed back. Authentication, quota, permission,
+network, timeout, blocked, empty, and incomplete output errors are not retried.
+Timeouts cover SDK HTTP operations, not a single wall-clock deadline for ADC
+discovery/refresh and the entire command.
+
+Only `PreparedEvidencePackage` enters the prompt. `ci-diagnosis-v1` keeps fixed
+system instructions separate from a JSON envelope named `untrusted_evidence_data`.
+The envelope contains sanitized excerpts, evidence/source IDs and ranges,
+run/attempt/commit identifiers, warnings, and completeness flags. No raw collection
+logs, original configuration, credentials, ground-truth labels, or arbitrary
+repository files are sent. The model has no tools or browsing. The engine adds a
+30,000-character excerpt budget and a 12,000-character metadata budget; oversized
+packages are rejected without silently dropping context or limitations.
+
+Gemini returns only a strict `DiagnosisDraft`: `observed_failure_summary`,
+`status` (`diagnosed` or `insufficient_evidence`), `hypotheses`,
+`recommended_next_steps`, and `limitations`. Each hypothesis contains an
+explanation, provided evidence IDs, `low`/`medium`/`high` confidence, and verification
+steps. The application builds the existing `InvestigationReport` from trusted
+package identity/evidence, then runs `validate_report_evidence()`. Unknown fields,
+malformed/duplicate-key JSON, invented or repeated references, unsupported
+hypotheses, and blank required fields are rejected before presentation.
+
+Insufficient packages and workflows without failed jobs return a local
+`insufficient_evidence` report without initializing Gemini or ADC. This existing
+report status also represents “nothing to investigate”; read the summary for the
+distinction. Useful incomplete evidence can be investigated, but all pipeline
+warnings/limitations remain visible and high-confidence hypotheses are rejected.
+The model can abstain too. Diagnosis errors print safe JSON and exit 1; accepted
+reports and local abstentions exit 0 unless collection was inaccessible.
+
+Library use requires the caller to obtain consent and verify the package first:
+
+```python
+from ci_investigator.diagnosis_engine import diagnose
+from ci_investigator.evidence_pipeline import prepare_evidence, validate_prepared_package
+
+package = prepare_evidence(collection)
+validate_prepared_package(package, collection)
+# Only after the user has consented to transmitting this prepared evidence:
+report = diagnose(
+    package,
+    has_failed_jobs=collection.failed_job_count > 0 and collection.outcome != "successful",
+)
+```
+
+Tests inject a `DiagnosisClient` implementing `generate(DiagnosisPrompt) -> str`.
+The failed-job boolean is a local collection gate, not additional model context.
+The engine cannot reconstruct provenance from a package alone; library callers
+must not substitute hand-edited or unsanitized packages for pipeline output.
+
+Valid citations do **not** prove relevance or causal correctness. Prompt injection
+can still influence prose or the choice of a valid but irrelevant citation; the
+prompt reduces this risk, and deterministic checks enforce schema/reference rules
+without claiming to understand causality. Confidence is qualitative, not a
+probability. Human review and verification remain necessary.
+
+Requests can incur input/output token charges, including model thinking where
+applicable. The prompt, metadata, and response schema consume input tokens;
+character bounds are not exact token counts. The optional validation retry can
+double generation requests. There is no cost estimator, cache, or paid token-count
+preflight. Consult [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing)
+and your project quotas rather than assuming a fixed request price.
+
+### One authorized synthetic live smoke test
+
+No live Gemini diagnosis was run during this implementation. The previously
+successful connection test is user-reported, not a test of this diagnosis path.
+After configuring ADC and reviewing the script, explicitly authorize **one**
+potentially paid request from the repository root:
+
+```sh
+python scripts/gemini_smoke_test.py --help
+python scripts/gemini_smoke_test.py --allow-external-ai
+```
+
+The script prepares and independently validates one synthetic missing-module log
+in memory. It does not contact GitHub or read repository logs or configuration.
+It uses the environment/default Vertex configuration and disables the optional
+response retry, so there is at most one generation request. Without the flag it
+exits before preparing or transmitting data. A valid report can diagnose or abstain;
+an error exits 1 without showing the raw response. No artifacts are saved.
+
+A successful live run verifies current ADC/project permissions, model availability,
+Vertex transport, server acceptance of the structured schema, and end-to-end
+validation of one synthetic response. It does not verify real workflow reasoning,
+causal correctness, complete secret redaction, injection resistance against a real
+model, quota recovery, all models/regions, or production latency/cost. Offline
+tests cover those deterministic error paths with fakes, not live service behavior.
+
 ## Foundation API
 
 ```python
@@ -212,10 +335,11 @@ qualitative judgments, not calibrated probabilities.
 The intended pipeline is URL parsing → GitHub collection at the workflow run's
 associated commit → evidence extraction and sanitization → Gemini reasoning through
 Vertex AI → deterministic reference validation → Streamlit presentation. Preparation
-redacts before selection and verifies source provenance. Gemini, diagnosis, and
-Streamlit are not implemented yet.
+redacts before selection and verifies source provenance. Gemini diagnosis now
+feeds the validated CLI report; Streamlit remains unimplemented.
 See [architecture](docs/architecture.md) and the [development log](docs/development_log.md).
 
-`.env.example` documents the optional GitHub token and reserves placeholder names
-for future Vertex AI integration. Keep real secrets in ignored local files;
+`.env.example` documents the optional GitHub token and current Vertex AI defaults.
+It is documentation, not an automatically loaded configuration file.
+Keep real secrets in ignored files;
 never add credential JSON files or tokens to the repository.

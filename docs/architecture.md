@@ -444,8 +444,181 @@ tests and corrected implementation bugs are recorded in the development log.
 6. Present the report through Streamlit, distinguishing observations from possible
    causes and exposing evidence and limitations.
 
-Steps 1–3 and the data/reference-validation portions of step 5 exist today.
-No cloud SDKs, prompts, AI reasoning, orchestration, storage, or UI are included.
+Steps 1–5 now exist, including opt-in Gemini reasoning and validation. Presentation
+is currently CLI JSON. No autonomous code modification, persistent storage, or UI
+is included.
+
+## Vertex AI diagnosis boundary (Task 5)
+
+`diagnosis_engine.diagnose(PreparedEvidencePackage, has_failed_jobs=..., client=...)`
+is the only diagnosis orchestration entry point. It cannot accept `CollectionResult`,
+fetch repository files, or build new evidence from model output. The caller must
+prepare and independently validate provenance upstream, obtain external-transmission
+consent, and supply the trusted failed-job gate. The CLI does this in that order;
+library callers own consent. The gate is not sent as additional context. A package
+alone does not carry workflow conclusion or failed-job counts, so those facts must
+not be inferred from log prose. A completed success is always gated off by the CLI,
+including an anomalous collection containing failed-job records.
+
+The existing report, evidence, collection, and preparation models are unchanged.
+The engine snapshots/revalidates the mutable package before calling a client.
+It does not mistake structural input validation for independent provenance:
+`validate_prepared_package` still reconstructs sanitized sources from collection.
+An injected `DiagnosisClient.generate(DiagnosisPrompt) -> str` replaces Gemini in
+tests without bypassing local output validation.
+
+### Transport and authentication
+
+`gemini_client.GeminiClient` uses the official SDK, `genai.Client(vertexai=True,
+project=..., location=...)`, and ADC. Defaults are project `drivernets`, location
+`global`, model `gemini-2.5-flash`, configurable via `GOOGLE_CLOUD_PROJECT`,
+`GOOGLE_CLOUD_LOCATION`, and `VERTEX_AI_MODEL`. `.env` is never auto-loaded. Use
+`gcloud auth application-default login` locally or attached cloud ADC; no API key
+or service account JSON file is supported. The MVP refuses explicit
+`GOOGLE_APPLICATION_CREDENTIALS` file configuration. Explicit project/location
+select ADC even when unrelated API-key environment variables are present.
+
+The client uses API `v1` and an application-selected Google Vertex HTTPS endpoint;
+SDK base-URL environment overrides cannot redirect evidence elsewhere. The HTTPX
+client disables environment proxy configuration. ADC has its own credential
+discovery/refresh behavior. HTTP timeouts default to 60,000 ms, configurable with
+`VERTEX_AI_TIMEOUT_MS` within 1,000–120,000 ms. These are operation bounds, not a
+hard command-wide/ADC wall-clock deadline. The SDK client is closed after each
+generation request, including errors.
+
+Generation uses temperature 0.1, one candidate, JSON MIME type, and
+`response_schema=DiagnosisDraft`. Output defaults to 4,096 tokens, configurable
+through `VERTEX_AI_MAX_OUTPUT_TOKENS` within 512–8,192. No tools, grounding, code
+execution, external browsing, file uploads, or automatic function calls are enabled.
+Model reasoning/thinking defaults are otherwise unchanged; their behavior and
+token usage depend on the configured model. Model IDs are restricted to simple
+`gemini-*` names, not arbitrary API resource paths.
+
+SDK request attempts are explicitly set to one. There is no automatic service
+retry for timeout, quota, authentication, permission, network, or availability
+errors. Such errors become application-authored `DiagnosisError` messages without
+HTTP bodies, exception payloads, credential values, prompts, or signed URLs. Empty,
+blocked, non-text, non-STOP, and token-limited candidates are rejected as unusable.
+Even unexpected SDK failures cross the boundary as a generic error. Raw SDK
+exception chains are suppressed at the exposed error boundary; the CLI prints
+only safe JSON, not a traceback.
+
+### Prompt version and untrusted evidence
+
+`diagnosis_prompt.py` owns `ci-diagnosis-v1`. Application instructions are passed
+through the SDK's system-instruction field; the single user message is deterministic
+sorted JSON with `prompt_version` and `untrusted_evidence_data`. All strings in
+that data, including warnings, filenames, logs, configuration, and apparent role
+delimiters, are explicitly untrusted. Quoting/escaping keeps them within JSON data;
+no source text is interpolated into system instructions. This is a prompt boundary,
+not a mathematical guarantee that the model will ignore adversarial prose.
+
+The prompt distinguishes observations and causes, asks for evidence IDs, considers
+workflow/dependency context, rejects generic exits as causal proof, distinguishes
+test expectations and implementation defects where possible, requires uncertainty
+and verification, and forbids invented observed files/commands/events. A citation
+alone must never be described as proving a cause. Suggested checks are proposals,
+not claims that a command ran. Incomplete context forbids high confidence.
+
+The builder accepts only prepared evidence: canonical run identity, selected
+attempt, commit, selected sanitized excerpts with IDs/source ranges, prepared
+source metadata, warnings/limitations, and completeness flags. It does not serialize
+raw collection objects, original configuration, full sanitized sources, redaction
+counts, credentials, labels, or other repository content. It preserves selection
+budgets by adding no context. It also caps excerpt text at 30,000 characters,
+metadata (including excerpt identity/range overhead) at 12,000 characters,
+excerpts at 256, source records at 10, and serialized user content at 280,000
+characters including JSON escaping. Larger custom preparation budgets may produce
+packages rejected by this stricter diagnosis boundary. Reprepare with smaller
+limits; do not clip excerpts or renumber evidence after preparation.
+
+`DiagnosisPrompt` hides content from its representation. Application code neither
+logs nor persists full prompts or responses. This does not control callers that
+explicitly print objects, enable SDK/HTTP debug logging, or configure external
+instrumentation. Redaction remains best-effort, so the CLI requires both
+`--ai-diagnose` and `--allow-external-ai` before even collecting an AI request.
+Original metadata/preview modes remain local to collection/preparation. AI and
+preview flags are mutually exclusive; metadata-only preview semantics are unchanged.
+
+### Draft, assembly, and deterministic acceptance
+
+`diagnosis_schemas.py` defines a strict, extra-field-forbidden `DiagnosisDraft`:
+
+| Field | Contract |
+| --- | --- |
+| `observed_failure_summary` | Nonblank text |
+| `status` | `diagnosed` or `insufficient_evidence` |
+| `hypotheses` | At most five hypothesis drafts |
+| `recommended_next_steps` | One to eight nonblank strings |
+| `limitations` | Up to twelve nonblank strings |
+| Hypothesis `explanation` | Nonblank text |
+| Hypothesis `supporting_evidence_ids` | Up to 64 existing IDs, no per-hypothesis repeats |
+| Hypothesis `confidence` | `low`, `medium`, or `high` |
+| Hypothesis `verification_steps` | One to eight nonblank strings |
+
+Draft text fields cap at 2,000 characters; reference IDs at 128. The model cannot
+supply evidence records, source text/ranges, workflow identity, or commit fields.
+The engine accepts no model-generated provenance certificates and does not rely
+on SDK `.parsed`. It caps complete text at 32,000 characters, parses JSON itself,
+rejects duplicate keys/non-JSON constants, and validates strict Pydantic shape.
+This character check occurs after SDK decoding, not as a streaming byte cap;
+generation token limits provide the server-side output bound.
+
+Application code constructs `InvestigationReport` using package identity and all
+prepared `Evidence`, redacts generated descriptive text best-effort, and calls
+`validate_report_evidence()`. That validator rejects unknown/repeated references,
+duplicate evidence records, diagnosed reports without hypotheses, and every
+unsupported diagnosed hypothesis. The engine additionally requires support for
+tentative hypotheses too. Shared citations across distinct hypotheses are valid.
+Invalid responses are never displayed as accepted reports.
+
+A complete text draft that fails schema, references, or confidence policy permits
+at most one fresh request (two generation requests total). `response_retries=0`
+disables it. The fresh request uses the exact same prompt: no rejected prose,
+model-supplied repair instructions, or growing conversation is fed back. Exhaustion
+returns a controlled error. There is no agent/tool loop or automatic confidence
+upgrade/downgrade. Empty, oversized, blocked, and incomplete responses do not get
+this retry.
+
+### Abstention, limitations, and scope of guarantees
+
+Insufficient packages, empty evidence, or a false failed-job gate return a local
+`insufficient_evidence` report without constructing Gemini or reading ADC. The
+existing report contract has no separate success/non-diagnosis status; the summary
+states when there is nothing to investigate. The model can also explicitly abstain.
+
+Useful incomplete packages can reach Gemini. Reports always retain preparation
+limitations and warning messages, plus a standard reasoning limitation. Any
+incomplete/truncated/omitted flag or truncated source adds a provisional-context
+limitation and deterministically rejects high-confidence hypotheses. Medium/low
+model confidence is retained, not upgraded. Model limitations supplement pipeline
+limitations and cannot erase them. The existing report schema stores the canonical
+run identity; selected attempt/commit are in the prompt/package and prepared source
+identifiers, not model-created report fields.
+
+Reference integrity proves that IDs resolve, and upstream provenance proves
+excerpt correspondence to supplied sanitized sources. Neither proves truth,
+causality, relevance, the job's actual checkout, or immunity to prompt injection.
+An attacker can still influence an explanation citing a valid but irrelevant line.
+Human verification is essential. Incomplete data may still yield an incorrect
+medium-confidence hypothesis. Missing failure text is never proof of success.
+
+Character limits are not exact token accounting. System instructions, metadata,
+JSON escaping and the schema add input tokens; generated and model-thinking tokens
+may incur charges. One optional output-validation retry can double requests.
+No paid token-count call, cost estimator, cache, or total-cost guarantee is added.
+For transport/schema reference, see the official
+[Google Gen AI SDK](https://googleapis.github.io/python-genai/) and
+[retry option documentation](https://googleapis.github.io/python-genai/genai.html#genai.types.HttpRetryOptions).
+Current rates belong to [Vertex AI pricing](https://cloud.google.com/vertex-ai/generative-ai/pricing).
+
+Offline verification includes fake clients and actual SDK serialization through
+`httpx.MockTransport` under the socket/DNS guard. It does not verify current live
+Vertex permissions, schema acceptance, service latency, charges, or real-model
+reasoning/injection resistance. `scripts/gemini_smoke_test.py --allow-external-ai`
+provides one explicitly authorized synthetic request with response retries disabled;
+the [README](../README.md#one-authorized-synthetic-live-smoke-test) records its exact
+scope. No live diagnosis call was made for this task.
 
 ## Trade-offs and limitations
 

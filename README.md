@@ -1,7 +1,8 @@
 # CI Investigator
 
-An AI-powered GitHub Actions failure investigation tool. The foundation and
-read-only GitHub data collection layer are implemented. Python 3.11+ is required.
+An AI-powered GitHub Actions failure investigation tool. The foundation, read-only
+GitHub collection, and deterministic evidence preparation are implemented.
+Python 3.11+ is required. Gemini reasoning and Streamlit remain future work.
 
 ## Install and test
 
@@ -99,14 +100,65 @@ Raw log text and configuration content remain in memory and are excluded from
 model representations and default serialization. Library attributes still expose
 raw data for the next processing stage: they are **unredacted**, must remain
 internal, and must never be sent directly to an LLM. Exception messages exclude
-response bodies, authentication headers, and signed redirect URLs. Future secret
-redaction and evidence extraction are not implemented yet.
+response bodies, authentication headers, and signed redirect URLs. Use the
+processing layer below to prepare bounded, sanitized evidence from this raw data.
 
 Redirect hostname checks do not resolve DNS or verify the connected peer's address.
 Allowed names can still resolve to private addresses or undergo DNS rebinding;
 these checks do not completely prevent SSRF. Future diagnosis must account for
 truncation and allow an insufficient-evidence outcome when relevant failure context
 is missing. See [review findings and limitations](docs/architecture.md) for details.
+
+## Prepare and preview evidence
+
+```sh
+ci-investigator "https://github.com/OWNER/REPO/actions/runs/RUN_ID" --preview-evidence
+ci-investigator "https://github.com/OWNER/REPO/actions/runs/RUN_ID" --preview-evidence --metadata-only
+```
+
+Preview prints run/attempt/commit identity, source IDs, evidence IDs, original line
+ranges, sanitized excerpts, warnings, and limitations. `--metadata-only` omits
+excerpt text. Both commands collect from GitHub; the processing itself is offline.
+Sanitization failure produces a generic error with no raw-content fallback.
+JSON escapes terminal control characters and unusual Unicode.
+
+Given an existing `CollectionResult`, library callers can prepare and independently
+check the excerpts without making additional requests:
+
+```python
+from ci_investigator.evidence_pipeline import prepare_evidence, validate_prepared_package
+from ci_investigator.evidence_schemas import PreparationLimits
+
+package = prepare_evidence(collection, limits=PreparationLimits(max_excerpts=12))
+validate_prepared_package(package, collection)
+print(package.model_dump_json(indent=2))
+```
+
+All available log/configuration text is pattern-redacted before selection. Rules
+cover common GitHub tokens, unquoted or quoted Bearer credentials, HTTP Basic
+credentials in Authorization/Proxy-Authorization headers, URL credentials,
+API/password/secret assignments, AWS access-key IDs, and PEM private keys. Basic
+header rules include common JSON fields, `=` assignments, and one layer of escaped
+quote delimiters. Category counts contain no
+secret values. This is **best-effort redaction**, with possible missed secrets and
+false positives; prepared text is not automatically safe to send externally.
+
+Selection prioritizes detailed Python/pytest/install failures over generic exit
+messages, merges nearby context, and includes relevant collected configuration.
+Defaults are 24 excerpts, 2,000 characters per excerpt, 30,000 combined characters,
+and up to five context lines on each side. Whole-line ranges are split or omitted
+to fit; omitted context is disclosed. Tracebacks retain continuity when practical.
+
+Provenance checks match every excerpt exactly to its sanitized source and original
+inclusive line range. LF defines physical lines; CRLF becomes LF in excerpt text.
+Stable IDs depend on sanitized content and source/range identity. No full raw or
+sanitized source is included in the prepared package.
+
+`ready` means an informative failure observation was retained, not that a cause
+was diagnosed. Generic exit messages, failed-step hints, or configuration alone
+yield `insufficient_evidence`. Missing files/logs, truncation, collection warnings,
+and processing omissions remain visible. Logs and configuration are untrusted data:
+embedded instructions have no authority. No root cause or confidence is generated.
 
 ## Foundation API
 
@@ -159,8 +211,9 @@ qualitative judgments, not calibrated probabilities.
 
 The intended pipeline is URL parsing → GitHub collection at the workflow run's
 associated commit → evidence extraction and sanitization → Gemini reasoning through
-Vertex AI → deterministic reference validation → Streamlit presentation. Gemini,
-evidence sanitization, diagnosis, and Streamlit are not implemented yet.
+Vertex AI → deterministic reference validation → Streamlit presentation. Preparation
+redacts before selection and verifies source provenance. Gemini, diagnosis, and
+Streamlit are not implemented yet.
 See [architecture](docs/architecture.md) and the [development log](docs/development_log.md).
 
 `.env.example` documents the optional GitHub token and reserves placeholder names

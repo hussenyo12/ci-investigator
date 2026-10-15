@@ -356,3 +356,245 @@ of an error in a prefix cannot rule out that error in the missing ending. Raw da
 remains unredacted and internal, and valid evidence references still do not prove
 factual or causal correctness. Earlier partial-rerun jobs and differences between
 `head_sha` and actual checkouts remain existing limitations.
+
+## 2026-10-15 — Task 3: secure log processing and evidence extraction
+
+### Scope and inspection
+
+Inspected the collection/foundation models, collector, HTTP client, reference
+validator, CLI, offline fixtures, architecture, and repository state before coding.
+The starting implementation was commit `ed81e5e`; its 322 tests passed in 0.26s.
+Proposed an offline pipeline of redaction, deterministic selection, and exact
+sanitized-source provenance checks, reusing `Evidence`. No GitHub ingestion
+behavior, Gemini integration, Streamlit, database, or AI diagnosis was added.
+
+Requirements included line-preserving secret redaction before selection, relevant
+Python/pytest/install/configuration excerpts, stable IDs, explicit insufficiency
+and collection limitations, configurable evidence budgets, a safe manual preview,
+and offline adversarial coverage. Defaults remain 24 excerpts, 2,000 characters
+per excerpt, 30,000 combined characters, and five context lines per side.
+
+### Implementation decisions
+
+- Added `redactor.py`: stable category placeholders for common GitHub/Bearer
+  tokens, URL credentials, secret assignments, AWS access-key IDs, and PEM private
+  keys. Preserve LF counts and CRLF; handle common quoted/YAML block values and
+  preserve recognizable environment/expression references. Input/output bounds
+  and value-free errors fail closed for unsupported input. Pattern matching is
+  explicitly best-effort, not external-transmission approval.
+- Added `evidence_schemas.py` for preparation limits, source metadata, category
+  counts, warnings, and a `PreparedEvidencePackage` separate from AI reports.
+  Existing `Evidence` remains the excerpt schema.
+- Added `evidence_extractor.py`: prioritize detailed Python/pytest/install errors
+  over generic exits, preserve practical traceback continuity, merge context,
+  split whole-line ranges to fit budgets, and select configuration using observed
+  failure/step hints. Cap anchors and source counts; report relevant omissions.
+  Relevance priority is not confidence, and configuration absence is not a cause.
+- Added `evidence_provenance.py`: LF-only physical lines, canonical LF excerpts
+  from CRLF, inclusive source ranges, and stable IDs derived from sanitized text
+  plus identity/range. Validate exact text, bounds, source/type, ID, and uniqueness.
+- Added `evidence_pipeline.py`: canonical collection provenance checks, sanitize
+  all available source text and surfaced metadata before extraction, propagate
+  missing/truncated/rate-limited/incomplete data, then validate excerpts. An
+  independent package validator reconstructs sanitized sources from the supplied
+  collection. No full sources are serialized in the prepared package.
+- Extended the CLI with `--preview-evidence` and `--metadata-only`. It prints
+  sanitized excerpts or metadata, escapes JSON control characters, and never
+  falls back to raw text after failure. Existing metadata output is now sanitized
+  too. No source contents are written to disk by the implementation.
+- Added synthetic offline redaction, extraction/configuration, provenance, budget,
+  malformed-input, prompt-injection, and CLI regressions. Updated README and
+  architecture with API/CLI examples, security boundaries, and accepted limits.
+
+### Actual tests, findings, and corrections
+
+- An early full run with the new tests passed **378 tests in 0.85s**. Additional
+  adversarial tests then exposed two bugs: a bare YAML password containing spaces
+  left the suffix visible, and a blank context line could allow an excerpt to
+  exceed its character budget by one because the line separator was not counted.
+- The targeted regression run recorded **2 failed, 2 passed, 43 deselected in
+  0.11s**. Corrected plain YAML scalar masking through the comment/delimiter and
+  corrected whole-line splitting to count separators even after an empty line;
+  also enforce the per-excerpt cap while fitting the remaining total budget.
+  Tests verify both secrecy/useful-context preservation and exact size limits.
+- After those corrections, **382 tests passed in 0.83s**. Further regressions
+  cover informative-error priority, failed-step hints, generic exits, source
+  metadata modification, and truncated configuration. The final expanded suite
+  passed **387 tests in 0.84s** before documentation finalization.
+- During code review, avoided repeatedly splitting source text and removed
+  potentially costly greedy identifier/installer patterns. Long repeated-input
+  tests pass; no runtime failure is claimed for these preventive changes.
+- Ruff identified line length, import ordering, and an unused test import during
+  implementation. These were corrected; subsequent Ruff checks passed.
+- `python -m pip install -e ".[dev]"` succeeded using `.venv` after an approved
+  network retry. The first sandboxed attempt could not fetch setuptools build
+  dependencies. No runtime or development dependency was added by this task.
+- Final run after documentation and CLI help updates:
+  `python -m pytest -q`: **387 passed in 0.83s**.
+- `ruff check .`: **All checks passed!**
+- `git diff --check`: passed.
+- `ci-investigator --help`: passed; both preview flags are displayed.
+
+Tests use synthetic credentials, mocked collection, and the existing socket/DNS
+guard. No live GitHub logs, Google Cloud calls, or external-service processing was
+performed for this task. Installation was the only network verification. Changes
+remain uncommitted for independent review.
+
+### Remaining limitations and next steps
+
+Unknown, encoded, obfuscated, or unusual multiline secrets may escape the patterns;
+false positives can remove useful evidence. No full configuration/shell parser,
+entropy scanner, or external secret-detection service was introduced. Redaction
+does not neutralize prompt injection or prove text safe to transmit. Logs remain
+untrusted data even when their excerpts are accurately mapped and redacted.
+
+Bounded prefixes can omit the actual error. Anchor limits, whole-line omission,
+configuration allowlists, and context budgets can omit relevant evidence. `ready`
+means useful observations survived, not a diagnosed cause; missing errors never
+prove no failure. Original collection limitations, including DNS/SSRF residual
+risk, partial reruns, and possible differences from the job checkout, remain.
+
+Provenance validates against the supplied collection, not an independent GitHub
+authentication or causal oracle. IDs are deterministic truncated hashes, not
+signatures. Callers can access internal data and mutate models; revalidate after
+changes. The package validator covers identity/source/excerpt correspondence,
+not factual relevance or all derived preparation flags.
+
+Next, independently review this boundary before adding Gemini. Future integration
+must explicitly decide what may leave the process, constrain untrusted input,
+carry all insufficiency warnings, request structured tentative reasoning, and
+apply the existing report-reference validator. No such integration is included.
+
+## 2026-10-15 — Task 3.1: authentication-header redaction review (F-004)
+
+### Inspection and independent finding
+
+Inspected `redactor.py`, preparation/preview tests, category models, documentation,
+and working-tree status before changing code. Task 3 changes were already present
+and uncommitted; the existing ZIP deletion was left untouched. The baseline
+`python -m pytest -q` passed **387 tests in 0.84s**.
+
+Independent review identified that single- and double-quoted Bearer credentials
+and HTTP Basic Authorization credentials were not masked. The Bearer pattern
+explicitly excluded quote characters, and there was no Basic-header rule. A
+synthetic quoted credential inside an `AssertionError` survived extraction and
+appeared in serialized `PreparedEvidencePackage` output. Such output could expose
+authentication material to previews or a future Gemini request.
+
+### Reproduction and correction
+
+- Added regressions before changing the redactor. The targeted command
+  `python -m pytest -q tests/test_redactor.py tests/test_evidence_pipeline.py -k
+  "authentication or basic_prose" --tb=no` recorded **30 failed, 5 passed,
+  52 deselected in 0.14s**. Failures reproduced missing redaction in direct calls,
+  prepared packages, and CLI previews; ordinary unquoted Bearer and existing
+  value-free error behavior remained passing controls.
+- Extended Bearer credential matching to single- and double-quoted values while
+  preserving ordinary Bearer support and its `BEARER_TOKEN` category. Added
+  `BASIC_AUTH` to the shared category type and a separate case-insensitive rule
+  scoped to Authorization/Proxy-Authorization headers. Basic prose is preserved.
+- Shared credential matching handles backslash escapes within quotes, stops at
+  LF/CRLF, and masks an unterminated quoted value through the line ending.
+  Replacement affects the credential span rather than the whole failure message;
+  surrounding quotes and context remain. Existing placeholders are unchanged
+  and receive no additional counts on repeated redaction.
+- Added 35 regression cases covering ordinary/quoted Bearer, Basic, mixed-case
+  and proxy headers, LF/CRLF preservation, multiple sensitive values on one line,
+  escaped/unclosed quotes, useful error context, determinism/idempotence, and
+  exceptions without credentials. Full preparation tests verify log/config text,
+  warnings, limitations, category-only counts, serialized output, and provenance.
+  Mocked CLI tests verify both excerpt and metadata-only previews. All credentials
+  used in these tests are synthetic.
+- Updated architecture and README with the authentication rules, finding, and
+  residual limits. No Gemini, Streamlit, ingestion, or provenance-policy changes
+  were made, and no dependency was added.
+
+### Actual verification
+
+- After the correction, the same targeted selection with `--tb=short` passed
+  **35 tests, 52 deselected in 0.10s**.
+- `python -m pytest -q`: **422 passed in 0.91s**, including all 387 existing tests.
+- `ruff check .`: **All checks passed!**
+- `git diff --check`: passed.
+
+Tests retained the existing socket/DNS guard and used mocked HTTP for previews.
+No external service was called. No further implementation or lint failures were
+observed after correcting the reproduced finding. Changes remain uncommitted.
+
+### Residual risks
+
+These rules cover recognizable credential forms. Arbitrary encoding, alternate
+header serialization, other authentication schemes, unknown secret values, and
+obfuscated input may escape redaction. Conservative handling of a malformed quoted
+credential can remove useful text on the same line. Redaction remains best-effort;
+passing it does not authorize external transmission or neutralize prompt injection.
+Existing evidence incompleteness and causal-validation limitations remain. Future
+Gemini integration must independently maintain those boundaries; it is not started
+in this task.
+
+## 2026-10-15 — Task 3.2: serialized Authorization credentials (F-005)
+
+### Review finding and reproduction
+
+Inspected the redactor, authentication regression tests, package/preview paths,
+documentation, and working tree before making changes. Earlier task changes were
+already uncommitted; the existing modified review ZIP was not changed by this task.
+The baseline suite passed **422 tests in 0.93s**.
+
+Independent review identified that Basic credentials survived in JSON-style
+Authorization fields and `Authorization=Basic ...` assignments. The F-004 rule
+handled ordinary colon-delimited headers but did not recognize quotes around the
+key/value or an equals separator. End-to-end preparation retained the credential
+inside an extracted `AssertionError`, creating an exposure risk for previews and
+future external use.
+
+Added regressions before changing the rule. The command
+`python -m pytest -q tests/test_redactor.py tests/test_evidence_pipeline.py -k
+serialized_authorization --tb=no` recorded **33 failed, 4 passed, 87 deselected
+in 0.14s**. This reproduced exposure in direct redaction, serialized prepared
+packages, and mocked previews, including common escaped representations. Existing
+JSON Bearer behavior, unrelated prose, and value-free failure handling provided
+passing controls.
+
+### Targeted correction and implementation finding
+
+- Extended the existing Basic header prefix to support optional matching key
+  quotes, `:`/`=` separators, and optional quotes before the scheme, preserving
+  case-insensitive Authorization/Proxy-Authorization matching.
+- Extended shared credential matching to recognize one layer of backslash-escaped
+  quotes and preserve those delimiters for both Basic and Bearer. Only credential
+  spans are replaced; source text is not decoded or reserialized. No category,
+  dependency, framework, ingestion, or provenance-policy change was needed.
+- The first correction passed 35 targeted cases but failed **2 cases in 0.11s**:
+  an unquoted credential adjacent to `}` consumed the closing brace. The credential
+  was masked, but surrounding structure was not preserved. Corrected bare-value
+  boundaries to preserve closing object/array punctuation and escaped delimiters;
+  explicitly recognize placeholders to retain idempotence.
+- Added 37 regression cases for JSON Authorization/Proxy-Authorization, assignments,
+  mixed case, literal/escaped quotes, multiple credentials, exact surrounding
+  context, LF/CRLF, determinism/idempotence, unrelated keys, and value-free errors.
+  JSON round-trip assertions check both ordinary and escaped JSON structure.
+  Preparation tests cover logs, collected configuration, warnings, limitations,
+  serialization, and provenance. CLI tests cover excerpt and metadata-only modes.
+  All credentials are synthetic.
+- Updated README and architecture to describe supported serialized forms and
+  retain explicit best-effort limitations. No Gemini or Streamlit work was added.
+
+### Actual verification and remaining risks
+
+- After the boundary correction, the targeted command with `--tb=short` passed
+  **37 tests, 87 deselected in 0.09s**.
+- `python -m pytest -q`: **459 passed in 0.95s**, including all 422 existing tests.
+- `ruff check .`: **All checks passed!**
+- `git diff --check`: passed.
+
+Tests remained offline under the existing socket/DNS guard, using mocked HTTP
+transports for CLI collection. No external service was called. Changes are left
+uncommitted for independent review.
+
+Supported escaping is deliberately limited to common single-layer quote forms.
+Arbitrarily nested serialization, encoded header/scheme names, unknown credential
+formats, and obfuscation can still defeat pattern matching. Malformed quoted
+input may cause conservative same-line context removal. There is no guarantee of
+detecting arbitrary secrets or of safety for external transmission. Existing
+incomplete-evidence and prompt-injection boundaries remain; no diagnosis is added.

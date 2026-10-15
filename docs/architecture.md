@@ -64,8 +64,9 @@ are errors, not an excuse to substitute another run, attempt, or branch.
 `github_client.py` owns API and unauthenticated download clients. Inject an
 `httpx.BaseTransport` (tests use `MockTransport`) without replacing collection
 logic. `github_errors.py` defines actionable typed failures. `collector.py`
-coordinates retrieval, deterministic selection, and partial results. `cli.py`
-prints metadata only. No `Evidence`, `Hypothesis`, or AI report is produced here.
+coordinates retrieval, deterministic selection, and partial results. The CLI
+defaults to metadata and optionally prepares sanitized evidence. Collection itself
+produces no `Evidence`, `Hypothesis`, or AI report.
 
 ### Endpoints, authentication, and attempt selection
 
@@ -237,7 +238,8 @@ Raw log/configuration contents are `repr=False` and excluded from default Pydant
 serialization. Library attributes still contain unredacted in-memory data; this is
 an accidental-exposure guard, not a security boundary against a caller explicitly
 copying the attributes. No raw content is saved to persistent storage, printed by
-the CLI, or sent to an LLM. Sanitization is mandatory in the next development step.
+the CLI, or sent to an LLM. The processing layer below sanitizes these sources
+before selecting evidence; this does not automatically authorize external use.
 
 API behavior references: [workflow runs](https://docs.github.com/en/rest/actions/workflow-runs),
 [workflow jobs](https://docs.github.com/en/rest/actions/workflow-jobs),
@@ -245,23 +247,205 @@ API behavior references: [workflow runs](https://docs.github.com/en/rest/actions
 [Git trees](https://docs.github.com/en/rest/git/trees), and
 [HTTPX streaming](https://www.python-httpx.org/quickstart/#streaming-responses).
 
+## Deterministic evidence preparation (Task 3)
+
+`evidence_pipeline.prepare_evidence(CollectionResult)` performs no network requests
+and leaves the collection unchanged. It validates source identity, sanitizes all
+available sources, selects relevant excerpts, and verifies exact provenance before
+returning a `PreparedEvidencePackage`. It reuses the foundation `Evidence` model;
+the package is separate from `InvestigationReport` and contains no hypotheses or
+confidence labels.
+
+### Redaction and trust boundary
+
+`redactor.SecretRedactor` uses deterministic standard-library patterns and stable
+category placeholders. Rules cover classic/fine-grained/variable-length GitHub
+tokens, unquoted/quoted Bearer values, Basic Authorization/Proxy-Authorization
+credentials, URL user information, common API-key,
+password, token, secret and credential assignments, AWS AKIA/ASIA access-key IDs,
+and PEM private-key blocks. Quoted assignments and common YAML block scalars are
+handled; an unterminated PEM block masks the remaining lines. Recognizable
+environment and GitHub expression references are preserved. The token families
+are informed by [GitHub authentication documentation](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github)
+and [AWS access-key documentation](https://docs.aws.amazon.com/us_en/IAM/latest/UserGuide/security-creds-programmatic-access.html).
+
+Redaction preserves LF separators, including within private-key blocks, and handles
+CRLF without shifting physical line numbers. Stable placeholders never contain
+original values. Summaries record category counts only, including sanitization of
+surfaced metadata and failed-step hints. Warnings/limitations are sanitized too;
+sensitive source identities are rejected rather than silently rewritten. Processing
+errors do not echo source text or Pydantic validation payloads. The CLI sanitizes
+collection metadata and errors, escapes JSON control characters, and fails closed
+without exporting original content if preparation fails.
+
+This is best-effort pattern matching, not comprehensive secret discovery. Unknown,
+encoded, split, or obfuscated secrets may remain. Conservative rules can remove
+useful diagnostics. The implementation deliberately avoids an LLM, entropy-based
+scanner, full YAML/TOML/shell parsing, or a new parsing framework. Advanced quoting,
+multiline syntax, and arbitrary secret formats are not fully understood. Passing
+redaction is not an approval to transmit content to an external service.
+
+Logs, file content, and step names remain untrusted data. A line such as “Ignore
+previous instructions” can remain in a relevant excerpt, but is never executed,
+followed, or used to retrieve another file. Future Gemini integration must maintain
+this boundary in prompts and tool permissions; sanitization does not neutralize
+prompt injection by itself.
+
+### F-004: authentication-header redaction review
+
+Independent adversarial review found that the original Bearer pattern skipped
+single- and double-quoted credentials and had no HTTP Basic header rule. A quoted
+Bearer credential inside an `AssertionError` survived the full preparation
+pipeline and appeared in serialized evidence. The original 387 tests passed but
+did not cover these forms. This could expose authentication material through
+manual previews or a future external Gemini request.
+
+The redactor now handles unquoted, single-quoted, and double-quoted Bearer values,
+retaining the `BEARER_TOKEN` category. A separate header-scoped rule handles Basic
+credentials under `BASIC_AUTH`. Header names and schemes match without case
+sensitivity, including `Proxy-Authorization`. Basic prose outside a matching header
+is left alone. Bearer matching retains its prior support outside a header.
+
+Both rules use credential-sized matches and replace only the value, preserving
+the scheme, quote delimiters, and surrounding failure message. Quoted values
+recognize backslash escapes; an unterminated quote masks through the physical line
+ending without crossing LF/CRLF. Already-masked values are unchanged and are not
+counted again. Category counts contain no credential material. Existing GitHub,
+URL, assignment, AWS, and private-key rules remain in place.
+
+Regressions reproduce the original failure in redaction, full prepared packages,
+and CLI previews. They verify LF/CRLF preservation, mixed-case/proxy headers,
+multiple credentials on one line, repeatability/idempotence, surrounding errors,
+and value-free summaries, warnings, and failure messages. Exact run results are
+recorded in the development log. These additions cover recognized authentication
+forms, not arbitrary encodings, all header serializations, other authentication
+schemes, or unknown credentials. Pattern redaction remains best-effort and does
+not by itself make evidence safe for external transmission.
+
+### F-005: serialized authentication credentials
+
+Further independent review reproduced Basic credentials surviving preparation in
+`headers={"Authorization": "Basic ..."}` and `Authorization=Basic ...` log text.
+F-004 supported ordinary colon-delimited headers, but its Basic prefix did not
+recognize quoted field names, quoted header values before the scheme, or equals
+separators. This could expose authentication material despite the original 422
+tests passing.
+
+The existing header-scoped Basic rule now recognizes Authorization and
+Proxy-Authorization keys, optionally quoted, with `:` or `=` separators and
+optional quotes around the header value. Key and scheme matching remain case
+insensitive. Common single-quoted dictionary representations and one layer of
+backslash-escaped quote delimiters are supported. Credential matching handles
+these escaped delimiters for both Basic and Bearer, leaving surrounding escaping
+and quotes intact. It does not decode or reserialize the source. Bare credential
+matches stop before closing object/array punctuation and escaped quote delimiters;
+an explicit placeholder case preserves idempotence. Categories remain `BASIC_AUTH`
+and `BEARER_TOKEN` with counts only; unrelated keys and Basic prose are untouched.
+
+Regressions compare complete expected strings, verify that JSON and escaped JSON
+remain decodable, preserve LF/CRLF counts and useful failure context, and repeat
+redaction. Full preparation covers serialized log/configuration text, warnings,
+limitations, source ranges, and independently verified provenance. Mocked previews
+cover both excerpt and metadata-only output. Failure-path tests verify that
+exceptions contain no synthetic credential. Actual reproduction and verification
+results appear in the development log.
+
+This remains targeted pattern handling. Arbitrarily nested serialization, Unicode
+escape sequences hiding header/scheme names, other encodings, and obfuscated or
+unknown credentials are not comprehensively supported. No general JSON parser,
+framework, or recursive decoding pass was added. Pattern redaction still does not
+establish that evidence is safe to transmit externally or that it contains no
+secrets. Malformed quoted input can conservatively mask useful text on that line.
+
+### Relevance, bounds, and incomplete evidence
+
+`evidence_extractor.py` recognizes Python exceptions and traceback sections, pytest
+assertions/outcomes/summaries, Actions annotations, dependency-install failures,
+and process exits. Failed-step names provide weak hints. Detailed errors outrank
+generic exit notices; the priority values are relevance scores, not probabilities
+or AI confidence. Dependency/test indicators guide selection from already-collected
+workflow commands, dependency declarations, and test configuration. Absence from
+an excerpt never proves a package is missing from the environment.
+
+Nearby windows merge, including overlapping/adjacent ranges. Defaults in
+`PreparationLimits` are 24 excerpts, 2,000 characters each, 30,000 combined, and up
+to five context lines before/after an anchor. Traceback continuity can extend
+beyond ordinary context, up to 200 lines, subject to text budgets. Whole-line
+segments split when necessary; an oversized physical line is omitted rather than
+clipped and assigned a misleading range. Budget selection favors detailed errors,
+then output returns to source and line order. Relevant omissions set an explicit
+flag/warning. Deterministic source order and IDs avoid duplicate excerpts.
+
+Hard bounds constrain configuration of these defaults (256 excerpts, 32,000
+characters per excerpt, one million combined; context remains at most five).
+The extractor retains at most 512 strongest anchors per source. Processing accepts
+the collector's three logs, five available configuration files, and seven
+configuration availability records. An individual redaction input/output is capped
+at four MiB of characters, the internal sanitized-source registry at eight MiB of
+characters, and surfaced collection metadata input at 64 KiB of characters. Failed
+step hints and job step counts are also bounded. Unsupported oversized or malformed
+inputs, including unpaired Unicode surrogates, cause value-free preparation errors.
+These are engineering limits, not performance guarantees.
+
+`ready` means an informative failure observation survived selection, even if the
+package is incomplete. Generic exits, traceback headers, failed-step hints, and
+configuration alone do not qualify. Otherwise status is `insufficient_evidence`;
+there is no invented cause. Missing logs/configurations, unfinished workflows,
+collection/rate-limit warnings, UTF-8 replacements, truncation, and selection
+omissions remain visible through warnings, limitations, or incompleteness flags.
+The first-1-MiB policy is unchanged: the actual failure can be in the unavailable
+ending. No recognizable error in available text proves neither success nor the
+absence of a failure. Future reasoning must account for these limitations.
+
+### Exact excerpt provenance
+
+`evidence_provenance.py` holds an internal, bounded sanitized source registry. LF
+alone defines physical lines; CR immediately before LF is removed for canonical
+excerpt text. Bare CR and Unicode separators remain within their physical line.
+A final LF does not invent another line. Excerpts join the original inclusive
+one-based range with LF and add no final delimiter. Redaction occurs before this
+mapping, and its preservation of LF counts retains original line positions.
+
+Each evidence ID is `ev-` plus 24 hexadecimal SHA-256 characters derived from the
+source type, canonical source ID, line range, and sanitized text. No raw secret is
+hashed for the ID. Validation checks source membership/type, range bounds, exact
+sanitized text, ID derivation, and package-local uniqueness. Configurations must
+match the collection commit SHA and canonical source ID; logs match run, attempt,
+and collected job. `validate_prepared_package(package, collection)` independently
+rebuilds sanitized sources, checks identity/source metadata, and rechecks excerpts.
+Call it again after modifying evidence or source metadata.
+
+The package serializes only selected sanitized excerpts and source metadata, never
+full raw or sanitized sources. The internal representation is not persistent
+storage or an access-control boundary. Validation trusts the supplied collection;
+it does not independently authenticate GitHub, establish the job's actual checkout,
+or prove that a caller-supplied source is genuine. The truncated hash is an identity
+aid, not a signature. The prepared-package validator covers provenance rather
+than reclassifying relevance or proving every package flag.
+
+These checks strengthen the earlier reference validator: provenance establishes
+that an excerpt matches available sanitized content, while
+`validate_report_evidence()` establishes that hypothesis references resolve.
+Neither proves factual relevance, completeness, or causal correctness. Actual
+tests and corrected implementation bugs are recorded in the development log.
+
 ## Pipeline and future work
 
 1. Parse a public GitHub workflow run URL into a canonical identity.
 2. Fetch run metadata, failed jobs, and logs. Resolve repository configuration from
    the head commit SHA attached to the run, rather than the current branch head.
    This need not be the exact checkout used by an individual job.
-3. Extract relevant evidence with original source IDs and line numbers. Sanitize
-   secrets before sending excerpts to an LLM; treat logs/configuration as untrusted
-   data rather than instructions. Keep provenance through any transformations.
+3. Sanitize collected sources, select bounded evidence with original source IDs
+   and line numbers, and verify exact provenance. Treat source text as untrusted
+   data and preserve incompleteness warnings.
 4. Ask Gemini through Vertex AI for structured hypotheses, verification steps,
    next steps, and limitations. Permit an explicit insufficient-evidence outcome.
 5. Apply model validation and deterministic evidence-reference validation.
 6. Present the report through Streamlit, distinguishing observations from possible
    causes and exposing evidence and limitations.
 
-Steps 1 and 2 and the data/reference-validation portions of step 5 exist today.
-No cloud SDKs, prompts, evidence extraction, orchestration, storage, or UI are included.
+Steps 1–3 and the data/reference-validation portions of step 5 exist today.
+No cloud SDKs, prompts, AI reasoning, orchestration, storage, or UI are included.
 
 ## Trade-offs and limitations
 
@@ -279,7 +463,7 @@ No cloud SDKs, prompts, evidence extraction, orchestration, storage, or UI are i
   operational verification; mocked tests cover these branches.
 - Syntactic owner/repository checks do not establish repository or run existence.
 - Evidence IDs are unique within a report, not globally across investigations.
-- No assumption that excerpt line count equals its original source range, allowing
-  future sanitization to preserve provenance without forcing a false equality.
+- The foundation Evidence schema permits arbitrary excerpt text; the preparation
+  provenance validator separately enforces exact sanitized source ranges.
 - Collection fields are ordinary lists; consumers must revalidate after mutation.
 - Dependency version ranges permit compatible updates; no lockfile is supplied.

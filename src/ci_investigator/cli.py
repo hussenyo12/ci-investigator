@@ -1,27 +1,55 @@
-"""Manual smoke testing that prints metadata and never prints raw contents."""
+"""Manual collection and sanitized evidence previews; never print raw contents."""
 
 import argparse
 import json
 
 from ci_investigator.collector import GitHubCollector
+from ci_investigator.evidence_pipeline import EvidencePreparationError, prepare_evidence
+from ci_investigator.evidence_provenance import EvidenceProvenanceError
 from ci_investigator.github_client import GitHubClient
 from ci_investigator.github_errors import GitHubError
+from ci_investigator.redactor import SanitizationError, SecretRedactor
 from ci_investigator.url_parser import WorkflowRunURLParseError
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Collect GitHub Actions facts; print metadata only."
+        description="Collect GitHub Actions facts; optionally preview sanitized evidence."
     )
     parser.add_argument("url", help="Public GitHub Actions workflow run URL")
     parser.add_argument("--attempt", type=int, help="Positive attempt number; defaults to latest")
+    parser.add_argument(
+        "--preview-evidence",
+        action="store_true",
+        help="Prepare and preview verified sanitized excerpts",
+    )
+    parser.add_argument(
+        "--metadata-only", action="store_true", help="Omit excerpt text from evidence preview"
+    )
     args = parser.parse_args(argv)
     try:
         with GitHubClient() as client:
             result = GitHubCollector(client).collect(args.url, attempt=args.attempt)
     except (GitHubError, WorkflowRunURLParseError) as error:
-        print(json.dumps({"error": str(error)}))
+        try:
+            message = SecretRedactor().redact(str(error)).text
+        except SanitizationError:
+            message = "Collection failed; no source content can be displayed."
+        print(json.dumps({"error": message}))
         return 1
+    if args.preview_evidence:
+        try:
+            package = prepare_evidence(result)
+        except (EvidencePreparationError, EvidenceProvenanceError):
+            print(
+                json.dumps(
+                    {"error": "Evidence preparation failed; no source content can be displayed."}
+                )
+            )
+            return 1
+        excluded = {"evidence": {"__all__": {"text"}}} if args.metadata_only else None
+        print(json.dumps(package.model_dump(exclude=excluded), indent=2, ensure_ascii=True))
+        return 1 if result.outcome == "inaccessible" else 0
     metadata = {
         "url": result.workflow_run.url,
         "outcome": result.outcome,
@@ -53,7 +81,26 @@ def main(argv: list[str] | None = None) -> int:
         "warnings": [warning.model_dump() for warning in result.warnings],
         "limitations": result.limitations,
     }
-    print(json.dumps(metadata, indent=2, ensure_ascii=True))
+
+    def sanitize_metadata(value: object) -> object:
+        if isinstance(value, str):
+            return SecretRedactor().redact(value).text
+        if isinstance(value, list):
+            return [sanitize_metadata(item) for item in value]
+        if isinstance(value, dict):
+            return {key: sanitize_metadata(item) for key, item in value.items()}
+        return value
+
+    try:
+        safe_metadata = sanitize_metadata(metadata)
+    except SanitizationError:
+        print(
+            json.dumps(
+                {"error": "Metadata sanitization failed; no source content can be displayed."}
+            )
+        )
+        return 1
+    print(json.dumps(safe_metadata, indent=2, ensure_ascii=True))
     return 1 if result.outcome == "inaccessible" else 0
 
 

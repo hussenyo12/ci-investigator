@@ -505,7 +505,7 @@ only safe JSON, not a traceback.
 
 ### Prompt version and untrusted evidence
 
-`diagnosis_prompt.py` owns `ci-diagnosis-v1`. Application instructions are passed
+`diagnosis_prompt.py` owns `ci-diagnosis-v2`. Application instructions are passed
 through the SDK's system-instruction field; the single user message is deterministic
 sorted JSON with `prompt_version` and `untrusted_evidence_data`. All strings in
 that data, including warnings, filenames, logs, configuration, and apparent role
@@ -580,12 +580,45 @@ returns a controlled error. There is no agent/tool loop or automatic confidence
 upgrade/downgrade. Empty, oversized, blocked, and incomplete responses do not get
 this retry.
 
+Validation failures carry an application-defined `ValidationFailureReason`, never
+model-generated strings or offending IDs: `SCHEMA_INVALID`,
+`UNKNOWN_EVIDENCE_REFERENCE`, `DUPLICATE_EVIDENCE_REFERENCE`,
+`MISSING_EVIDENCE_REFERENCE`, `HIGH_CONFIDENCE_INCOMPLETE`, `STATUS_INCONSISTENT`,
+and `OTHER_VALIDATION_FAILURE`. JSON/strict shape errors are schema failures;
+`diagnosed` with no hypotheses is a status inconsistency. Draft references are
+classified directly before trusted report assembly; the existing report validator
+still runs afterward. No validator exception text is parsed to infer a category.
+The CLI reports a fixed rejection message, final-attempt category, and bounded
+attempt count (one or two). Exceptions whitelist categories/counts and suppress
+underlying validation payloads, without printing/persisting requests or responses.
+
 ### Abstention, limitations, and scope of guarantees
 
 Insufficient packages, empty evidence, or a false failed-job gate return a local
 `insufficient_evidence` report without constructing Gemini or reading ADC. The
 existing report contract has no separate success/non-diagnosis status; the summary
 states when there is nothing to investigate. The model can also explicitly abstain.
+
+Following F-008, `PreparedEvidencePackage.incomplete` means a substantive context
+gap, rather than any warning. Confirmed `missing` files in the optional configuration
+allowlist are incidental when no available sanitized source literally mentions
+their path. Their availability records and both collection/preparation warnings
+remain visible. Both the file record and corresponding `config_missing` warning
+must be classified; exempting only one would preserve the false positive.
+
+Missing failed-job logs, logs lost by the job limit, truncated sources, omitted
+relevant evidence, unfinished attempts, decoding loss, unreadable/denied/invalid
+configuration, missing workflow YAML, referenced missing optional files, and unknown
+collection warnings remain substantive gaps. Warning exemptions require a matching
+missing optional-file record and source identity; warning prose never overrides
+completeness. Reprepare older packages to apply the refined classification; the
+engine still honors an explicitly supplied `incomplete=True`.
+
+Literal path mentions are a conservative relevance heuristic, not semantic
+analysis. Comments can cause false positives, and indirect/dynamic references may
+be missed. A GitHub `missing` result is not independent proof of filesystem absence
+(404 can conceal access restrictions). No flag certifies causal sufficiency or
+automatically justifies high confidence.
 
 Useful incomplete packages can reach Gemini. Reports always retain preparation
 limitations and warning messages, plus a standard reasoning limitation. Any

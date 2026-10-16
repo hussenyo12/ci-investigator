@@ -7,7 +7,7 @@ from pydantic import ValidationError
 
 from ci_investigator.evidence_schemas import PreparedEvidencePackage
 
-PROMPT_VERSION = "ci-diagnosis-v1"
+PROMPT_VERSION = "ci-diagnosis-v2"
 MAX_EVIDENCE_CHARS = 30_000
 MAX_METADATA_CHARS = 12_000
 MAX_PROMPT_CHARS = 280_000  # Includes worst-case JSON escaping, not an exact token count.
@@ -39,9 +39,12 @@ Use diagnosed only with at least one supported hypothesis. Otherwise use
 insufficient_evidence with no hypotheses and explain the missing information.
 Express uncertainty explicitly. Do not claim a hypothesis is proven merely because
 a supporting line exists. Citations establish reference integrity, not causality.
-For incomplete, truncated, or omitted context, never use high confidence; explain
+For substantively incomplete, truncated, or omitted context, never use high confidence; explain
 the impact and recommend actionable checks. Missing evidence is not proof of a
 cause or of success. Model limitations supplement pipeline limitations.
+Warnings about absent unrelated optional configuration alone do not establish
+substantive incompleteness. Use the supplied completeness indicators, and assess
+each hypothesis on its evidence; complete context does not itself justify high confidence.
 Keep the response concise (at most five hypotheses), with actionable next steps.
 """
 

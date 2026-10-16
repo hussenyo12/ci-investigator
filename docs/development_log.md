@@ -712,3 +712,108 @@ requests. SDK timeout settings bound HTTP operations, not a hard wall-clock dead
 for ADC discovery/refresh or the full command. Response character checks run after
 SDK decoding. No model tools, caching, automatic file changes, or unbounded loop
 was introduced. Changes are left uncommitted for independent review.
+
+## 2026-10-15 — F-008: optional-file absence and diagnosis rejection diagnostics
+
+### Reported live failure versus confirmed offline cause
+
+The user reported a missing-environment-variable failure in
+`hussenyo12/ci-investigator-demo`, run
+`https://github.com/hussenyo12/ci-investigator-demo/actions/runs/38744993448`.
+Their preview had two excerpts, `ready`, no log truncation or evidence omission,
+and `incomplete=True`. The log included
+`RuntimeError: DEMO_SERVICE_ENDPOINT environment variable is required`; workflow
+YAML was available, while several unrelated optional configuration files were
+absent. Gemini diagnosis returned the old generic bounded-attempts error.
+No live workflow or Gemini response was fetched during this fix.
+
+Inspection confirmed two independent sources of false incompleteness in
+`prepare_evidence`: any collection warning and any unavailable configuration
+record set the flag. Thus even ordinary absent optional probes classified a
+complete log/workflow investigation as incomplete. The engine then rejected every
+high-confidence hypothesis on that flag. The old error discarded the rejection
+category, so it cannot establish that this was the cause of the original live
+model response being rejected. Malformed schema, invalid references, and other
+validation failures remain possible explanations for that specific live outcome.
+
+The baseline suite passed **552 tests in 1.43s**. Added two offline regressions
+before changing production code, using synthetic complete failed-job output,
+available workflow YAML, and missing `pyproject.toml`, `requirements-dev.txt`,
+`tox.ini`, and `setup.cfg`, including collector-style `config_missing` warnings.
+They reproduce `incomplete=True` and rejection of a supported high-confidence
+draft. The targeted run recorded **2 failed in 0.19s**, including the exact generic
+bounded-attempts error. The first test setup supplied only one fake response and
+exhausted its iterator during retry; corrected it to supply both bounded attempts
+before recording this reproduction. No real model response was used or retained.
+
+### Scoped correction
+
+- Refined completeness in the pipeline: confirmed missing allowlisted optional
+  configuration is incidental if not literally referenced in available sanitized
+  sources. Corresponding file records and `config_missing` warnings both receive
+  that classification. All warnings remain sanitized and visible in prompts,
+  previews, and report limitations; no evidence text, range, or ID changes.
+- Retained conservative gaps for missing failed-job logs, skipped failed jobs,
+  truncation, extraction omissions, incomplete attempts, decoding loss, missing
+  workflow YAML, referenced missing optional files, configuration retrieval errors,
+  and unknown warnings. The engine continues to reject high confidence whenever
+  `evidence_is_incomplete()` is true; confidence is never silently downgraded.
+- Versioned the prompt to `ci-diagnosis-v2`, explaining the distinction between
+  substantive gaps and incidental missing optional files. Completeness alone
+  still cannot justify confidence. The structured draft fields are unchanged.
+- Added fixed validation categories for schema, unknown/duplicate/missing evidence
+  references, status inconsistency, high confidence with incomplete evidence,
+  and other failures. Exceptions and CLI output expose only a whitelisted category
+  and bounded attempt count. Classification does not parse exception messages
+  containing untrusted reference values. Trusted report assembly and existing
+  `validate_report_evidence()` checks still run before acceptance.
+- Kept the retry policy at zero or one fresh retry, with the unchanged prompt and
+  no rejected output fed back. The final failure category survives exhaustion.
+  Model, endpoint/API settings, authentication, dependencies, and evidence-ID
+  generation were not changed. No Streamlit or unrelated implementation was added.
+
+### Offline regression coverage and actual checks
+
+`tests/test_f008.py` adds 29 cases covering the exact reported scenario; stable
+evidence IDs with/without missing optional probes; warning retention and canonical
+warning identities; acceptance of supported high-confidence drafts on complete
+context; missing some/all failed-job logs; truncated logs; omitted evidence;
+unfinished attempts; failed-source errors; unreadable configuration; missing
+workflow YAML; referenced optional files; unknown warnings; decoding loss; every
+failure category; malformed/schema-invalid output; missing/unknown/duplicate
+references; non-sensitive exception/CLI output; zero/one-retry bounds, recovery,
+and final-attempt reason preservation; and original metadata/preview/diagnosis
+CLI modes. Existing tests remain unchanged and passing.
+
+One new failure-category test expected an unpaired Unicode surrogate to reach
+output redaction, but Pydantic rejected it first as `SCHEMA_INVALID`. The targeted
+run recorded **1 failed, 28 passed in 0.25s**. Corrected the test to inject a
+sanitization failure explicitly when checking `OTHER_VALIDATION_FAILURE`; no
+production change was needed for that test assumption.
+
+The system Python 3.12 lacks pytest/Ruff. Used the existing isolated Python
+3.12.10 environment at `/private/tmp/ci-investigator-task5-venv`, prepending its
+`bin` to PATH, without changing project dependencies or making installation calls.
+The requested commands were run with that interpreter:
+
+- `python3.12 -m pytest -q`: **581 passed in 1.53s**.
+- `python3.12 -m ruff check .`: **All checks passed!**
+- `git diff --check`: passed.
+
+All tests used synthetic fixtures/fake models or mocked transports under the
+existing socket/DNS guard. No live GitHub or Gemini requests, credentials, raw
+repository logs, prompts, or model responses were transmitted or persisted by
+this work. The pre-existing modified review ZIP was untouched. Changes remain
+uncommitted for independent review.
+
+### Remaining limits
+
+The live rejection cause remains suspected, not confirmed. New reason codes make
+a future explicitly authorized evaluation diagnosable without exposing model
+data. Literal path mentions are a heuristic: comments can conservatively flag
+relevance, while dynamic or indirect references may be missed. GitHub 404 can also
+conceal access restrictions. Unknown warnings/retrieval failures deliberately
+remain conservative. Reprepare older packages rather than clearing their flags.
+Reference integrity and absence of detected gaps still do not establish causal
+correctness, calibrated confidence, or complete redaction. No live re-evaluation
+was performed or automatically scheduled.

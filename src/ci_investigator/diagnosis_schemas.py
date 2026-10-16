@@ -1,11 +1,24 @@
 """Bounded, non-authoritative model output; never accepts evidence records."""
 
+from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 
 DraftText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=2000)]
 EvidenceID = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=128)]
+
+
+class ValidationFailureReason(StrEnum):
+    """Application-defined categories only; never carry model text or reference values."""
+
+    SCHEMA_INVALID = "SCHEMA_INVALID"
+    UNKNOWN_EVIDENCE_REFERENCE = "UNKNOWN_EVIDENCE_REFERENCE"
+    DUPLICATE_EVIDENCE_REFERENCE = "DUPLICATE_EVIDENCE_REFERENCE"
+    MISSING_EVIDENCE_REFERENCE = "MISSING_EVIDENCE_REFERENCE"
+    HIGH_CONFIDENCE_INCOMPLETE = "HIGH_CONFIDENCE_INCOMPLETE"
+    STATUS_INCONSISTENT = "STATUS_INCONSISTENT"
+    OTHER_VALIDATION_FAILURE = "OTHER_VALIDATION_FAILURE"
 
 
 class HypothesisDraft(BaseModel):

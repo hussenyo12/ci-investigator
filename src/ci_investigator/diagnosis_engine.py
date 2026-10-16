@@ -9,7 +9,7 @@ from ci_investigator.diagnosis_prompt import (
     build_diagnosis_prompt,
     evidence_is_incomplete,
 )
-from ci_investigator.diagnosis_schemas import DiagnosisDraft
+from ci_investigator.diagnosis_schemas import DiagnosisDraft, ValidationFailureReason
 from ci_investigator.evidence_schemas import PreparedEvidencePackage
 from ci_investigator.evidence_validator import EvidenceValidationError, validate_report_evidence
 from ci_investigator.gemini_client import (
@@ -76,6 +76,23 @@ def _reject_constant(value: str) -> None:
     raise ValueError("Non-JSON numeric constant")
 
 
+def _validate_draft_references(draft: DiagnosisDraft, package: PreparedEvidencePackage) -> None:
+    """Classify failures without parsing validator messages containing model-supplied IDs."""
+    if draft.status == "diagnosed" and not draft.hypotheses:
+        raise InvalidDiagnosisResponse(ValidationFailureReason.STATUS_INCONSISTENT)
+    evidence_ids = {item.evidence_id for item in package.evidence}
+    for hypothesis in draft.hypotheses:
+        references = hypothesis.supporting_evidence_ids
+        if len(set(references)) != len(references):
+            raise InvalidDiagnosisResponse(ValidationFailureReason.DUPLICATE_EVIDENCE_REFERENCE)
+        if any(reference not in evidence_ids for reference in references):
+            raise InvalidDiagnosisResponse(ValidationFailureReason.UNKNOWN_EVIDENCE_REFERENCE)
+        if not references:
+            raise InvalidDiagnosisResponse(ValidationFailureReason.MISSING_EVIDENCE_REFERENCE)
+        if evidence_is_incomplete(package) and hypothesis.confidence == "high":
+            raise InvalidDiagnosisResponse(ValidationFailureReason.HIGH_CONFIDENCE_INCOMPLETE)
+
+
 def validate_diagnosis_response(text: str, package: PreparedEvidencePackage) -> InvestigationReport:
     """Never trust SDK .parsed or a model's own claim that its citations are valid."""
     if not isinstance(text, str) or not text.strip():
@@ -87,6 +104,10 @@ def validate_diagnosis_response(text: str, package: PreparedEvidencePackage) -> 
             text, object_pairs_hook=_unique_object, parse_constant=_reject_constant
         )
         draft = DiagnosisDraft.model_validate(payload)
+    except (ValueError, RecursionError):
+        raise InvalidDiagnosisResponse(ValidationFailureReason.SCHEMA_INVALID) from None
+    _validate_draft_references(draft, package)
+    try:
         # Best-effort output redaction, including secrets a model might generate.
         # Evidence IDs are checked as returned; trusted excerpts are never rewritten here.
         redactor = SecretRedactor()
@@ -119,18 +140,9 @@ def validate_diagnosis_response(text: str, package: PreparedEvidencePackage) -> 
             ),
         )
         validate_report_evidence(report)
-        for hypothesis in report.hypotheses:
-            # Tentative hypotheses must also be grounded in this engine.
-            if not hypothesis.supporting_evidence_ids:
-                raise ValueError("Hypothesis has no support")
-            if evidence_is_incomplete(package) and hypothesis.confidence == "high":
-                raise ValueError("High confidence with incomplete context")
         return report
     except (ValueError, RecursionError, SanitizationError):
-        raise InvalidDiagnosisResponse(
-            "Gemini output failed schema, reference, or confidence validation; "
-            "no diagnosis accepted."
-        ) from None
+        raise InvalidDiagnosisResponse(ValidationFailureReason.OTHER_VALIDATION_FAILURE) from None
 
 
 def diagnose(
@@ -171,9 +183,9 @@ def diagnose(
                     "Diagnosis client failed; no diagnosis was accepted."
                 ) from None
             return validate_diagnosis_response(text, package)
-        except InvalidDiagnosisResponse:
+        except InvalidDiagnosisResponse as error:
             if attempt == response_retries:
                 raise InvalidDiagnosisResponse(
-                    "Gemini returned invalid diagnosis output; bounded attempts exhausted."
+                    error.reason_code, attempt_count=attempt + 1, exhausted=True
                 ) from None
     raise AssertionError("unreachable")

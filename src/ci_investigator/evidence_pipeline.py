@@ -43,6 +43,47 @@ class EvidencePreparationError(ValueError):
     """Fail closed without echoing original source values or validation payloads."""
 
 
+def _has_collection_gaps(collection: CollectionResult, sources: list[SanitizedSource]) -> bool:
+    """Distinguish absent optional probes from lost investigation context.
+
+    Only confirmed missing allowlisted optional files receive an exemption. A
+    literal mention in available sanitized source text makes absence relevant.
+    Retrieval failures, missing workflow YAML, and unrecognized warnings stay
+    conservative. Warning prose and model claims never decide completeness.
+    """
+    missing_optional = {
+        file.path
+        for file in collection.configurations
+        if file.path in CONFIG_PATHS and file.availability == "missing" and file.content is None
+    }
+    mentioned = {
+        path
+        for path in missing_optional
+        if any(path in line for source in sources for line in source.lines)
+    }
+    incidental = missing_optional - mentioned
+    incidental_identities = incidental | {
+        file.source_identifier
+        for file in collection.configurations
+        if file.path in incidental
+    }
+    return (
+        collection.outcome in {"incomplete", "insufficient_data", "inaccessible"}
+        or collection.failed_job_count > len(collection.failed_jobs)
+        or any(log.decoding_replacements for log in collection.logs)
+        or any(
+            (file.availability != "available" or file.content is None)
+            and file.path not in incidental
+            for file in collection.configurations
+        )
+        or any(
+            warning.code != "config_missing"
+            or warning.source_identifier not in incidental_identities
+            for warning in collection.warnings
+        )
+    )
+
+
 def _sanitize_sources(
     collection: CollectionResult, redactor: SecretRedactor
 ) -> tuple[list[SanitizedSource], Counter[RedactionCategory]]:
@@ -296,12 +337,7 @@ def prepare_evidence(
                 any(source.truncated for source in sources)
                 or extraction.omitted
                 or bool(missing_jobs)
-                or bool(collection.warnings)
-                or collection.outcome in {"incomplete", "insufficient_data", "inaccessible"}
-                or any(
-                    file.availability != "available" or file.content is None
-                    for file in collection.configurations
-                )
+                or _has_collection_gaps(collection, sources)
             ),
         )
         validate_evidence_provenance(

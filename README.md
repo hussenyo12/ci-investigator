@@ -198,7 +198,7 @@ network, timeout, blocked, empty, and incomplete output errors are not retried.
 Timeouts cover SDK HTTP operations, not a single wall-clock deadline for ADC
 discovery/refresh and the entire command.
 
-Only `PreparedEvidencePackage` enters the prompt. `ci-diagnosis-v1` keeps fixed
+Only `PreparedEvidencePackage` enters the prompt. `ci-diagnosis-v2` keeps fixed
 system instructions separate from a JSON envelope named `untrusted_evidence_data`.
 The envelope contains sanitized excerpts, evidence/source IDs and ranges,
 run/attempt/commit identifiers, warnings, and completeness flags. No raw collection
@@ -219,9 +219,17 @@ hypotheses, and blank required fields are rejected before presentation.
 Insufficient packages and workflows without failed jobs return a local
 `insufficient_evidence` report without initializing Gemini or ADC. This existing
 report status also represents “nothing to investigate”; read the summary for the
-distinction. Useful incomplete evidence can be investigated, but all pipeline
-warnings/limitations remain visible and high-confidence hypotheses are rejected.
-The model can abstain too. Diagnosis errors print safe JSON and exit 1; accepted
+distinction. Missing optional configuration that is not mentioned in available
+sanitized sources remains a warning without setting `incomplete`. Missing logs,
+truncation, omitted context, unfinished attempts, retrieval failures, and unknown
+warnings remain substantive gaps. Useful incomplete evidence can be investigated,
+but all pipeline warnings/limitations remain visible and high-confidence hypotheses
+are rejected. Completeness alone does not justify a high-confidence conclusion.
+The model can abstain too. Invalid drafts report only a fixed `reason_code` and
+`attempt_count` (one or two), never model text or supplied reference values. The
+category describes the final rejected attempt; schema, unknown/duplicate/missing
+references, status, and incomplete-context confidence failures have distinct codes.
+Diagnosis errors print safe JSON and exit 1; accepted
 reports and local abstentions exit 0 unless collection was inaccessible.
 
 Library use requires the caller to obtain consent and verify the package first:

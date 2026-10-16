@@ -11,7 +11,7 @@ from google.genai import errors, types
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 
 from ci_investigator.diagnosis_prompt import DiagnosisPrompt
-from ci_investigator.diagnosis_schemas import DiagnosisDraft
+from ci_investigator.diagnosis_schemas import DiagnosisDraft, ValidationFailureReason
 
 MAX_RESPONSE_CHARS = 32_000
 
@@ -22,6 +22,28 @@ class DiagnosisError(RuntimeError):
 
 class InvalidDiagnosisResponse(DiagnosisError):
     """A complete text response failed local validation; one fresh attempt is safe."""
+
+    def __init__(
+        self,
+        reason_code: ValidationFailureReason,
+        *,
+        attempt_count: int = 1,
+        exhausted: bool = False,
+    ) -> None:
+        # Whitelist at the exposed boundary, including calls by injected clients.
+        self.reason_code = (
+            reason_code
+            if isinstance(reason_code, ValidationFailureReason)
+            else ValidationFailureReason.OTHER_VALIDATION_FAILURE
+        )
+        self.attempt_count = (
+            attempt_count if type(attempt_count) is int and attempt_count in (1, 2) else 1
+        )
+        state = "bounded attempts exhausted" if exhausted else "no diagnosis accepted"
+        super().__init__(
+            f"Gemini returned invalid diagnosis output; {state}; "
+            f"reason={self.reason_code.value}; attempts={self.attempt_count}."
+        )
 
 
 class UnusableModelResponse(DiagnosisError):

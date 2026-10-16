@@ -12,7 +12,7 @@ from ci_investigator.evidence_pipeline import (
     validate_prepared_package,
 )
 from ci_investigator.evidence_provenance import EvidenceProvenanceError
-from ci_investigator.gemini_client import DiagnosisError
+from ci_investigator.gemini_client import DiagnosisError, InvalidDiagnosisResponse
 from ci_investigator.github_client import GitHubClient
 from ci_investigator.github_errors import GitHubError
 from ci_investigator.redactor import SanitizationError, SecretRedactor
@@ -75,6 +75,17 @@ def main(argv: list[str] | None = None) -> int:
                     package,
                     has_failed_jobs=result.failed_job_count > 0 and result.outcome != "successful",
                 )
+            except InvalidDiagnosisResponse as error:
+                print(
+                    json.dumps(
+                        {
+                            "error": "Gemini diagnosis output was rejected.",
+                            "reason_code": error.reason_code.value,
+                            "attempt_count": error.attempt_count,
+                        }
+                    )
+                )
+                return 1
             except (DiagnosisError, DiagnosisInputError) as error:
                 print(json.dumps({"error": str(error)}, ensure_ascii=True))
                 return 1

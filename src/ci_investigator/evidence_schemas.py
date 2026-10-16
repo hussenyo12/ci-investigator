@@ -51,6 +51,7 @@ class PreparedEvidencePackage(_PreparedModel):
     sources: list[PreparedSourceMetadata] = Field(default_factory=list)
     warnings: list[PreparationWarning] = Field(default_factory=list)
     limitations: list[NonEmptyText] = Field(default_factory=list)
+    # Substantive context gaps; incidental optional-file absence remains a warning.
     incomplete: bool = False
     logs_truncated: bool = False
     evidence_omitted: bool = False

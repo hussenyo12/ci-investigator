@@ -1,0 +1,78 @@
+{
+  "workflow_run": {
+    "owner": "hussenyo12",
+    "repo": "ci-investigator-demo",
+    "run_id": 38744971088,
+    "url": "https://github.com/hussenyo12/ci-investigator-demo/actions/runs/38744971088"
+  },
+  "observed_failure_summary": "A Python pytest run failed because an assertion in `test_addition` expected `add(2, 2)` to return `5`, but the function correctly returned `4`. The CI job exited with code 1.",
+  "evidence": [
+    {
+      "evidence_id": "ev-b5488eda893d0b2f2eea2251",
+      "source_type": "log",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:run:38744971088:attempt:1:job:116456125043:log",
+      "start_line": 199,
+      "end_line": 222,
+      "text": "2026-10-15T13:42:28.8504892Z   Python2_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64\n2026-10-15T13:42:28.8505325Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64\n2026-10-15T13:42:28.8505769Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib\n2026-10-15T13:42:28.8506122Z ##[endgroup]\n2026-10-15T13:42:29.1433420Z F                                                                        [100%]\n2026-10-15T13:42:29.1434187Z =================================== FAILURES ===================================\n2026-10-15T13:42:29.1434883Z ________________________________ test_addition _________________________________\n2026-10-15T13:42:29.1435365Z \n2026-10-15T13:42:29.1435712Z     def test_addition() -> None:\n2026-10-15T13:42:29.1436157Z >       assert add(2, 2) == 5\n2026-10-15T13:42:29.1436549Z E       assert 4 == 5\n2026-10-15T13:42:29.1436890Z E        +  where 4 = add(2, 2)\n2026-10-15T13:42:29.1437142Z \n2026-10-15T13:42:29.1437496Z scenarios/assertion_mismatch/test_addition.py:7: AssertionError\n2026-10-15T13:42:29.1438181Z =========================== short test summary info ============================\n2026-10-15T13:42:29.1439352Z FAILED scenarios/assertion_mismatch/test_addition.py::test_addition - assert 4 == 5\n2026-10-15T13:42:29.1440065Z  +  where 4 = add(2, 2)\n2026-10-15T13:42:29.1440401Z 1 failed in 0.03s\n2026-10-15T13:42:29.1752830Z ##[error]Process completed with exit code 1.\n2026-10-15T13:42:29.1911875Z Post job cleanup.\n2026-10-15T13:42:29.2824265Z [command]/usr/bin/git version\n2026-10-15T13:42:29.2870543Z git version 2.55.0\n2026-10-15T13:42:29.2917686Z Temporarily overriding HOME='/home/runner/work/_temp/be0e1817-c761-45ca-94cf-382399de6c53' before making global git config changes\n2026-10-15T13:42:29.2919595Z Adding repository directory to the temporary git global config as a safe directory"
+    },
+    {
+      "evidence_id": "ev-6db635d0f1ca53e4e78be323",
+      "source_type": "config",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:8afc260aa320a42a0eaa908820e5a18e881c5b52:.github/workflows/02-assertion-mismatch.yml",
+      "start_line": 17,
+      "end_line": 30,
+      "text": "      - name: Check out repository\n        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6\n        with:\n          persist-credentials: [REDACTED:SECRET]\n      - name: Set up Python 3.12\n        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n        with:\n          python-version: \"3.12\"\n      - name: Create isolated environment and install declared dependencies\n        run: |\n          python -I -m venv .venv\n          .venv/bin/python -I -m pip --isolated install --disable-pip-version-check --no-input -r requirements.txt\n      - name: Run arithmetic test\n        run: .venv/bin/python -I -m pytest -q scenarios/assertion_mismatch/test_addition.py"
+    },
+    {
+      "evidence_id": "ev-ce5b8ea411447834a78c5d08",
+      "source_type": "config",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:8afc260aa320a42a0eaa908820e5a18e881c5b52:requirements.txt",
+      "start_line": 1,
+      "end_line": 6,
+      "text": "# Scenario A deliberately omits PyYAML. Keep it absent from this file.\n# Pin pytest and its Python 3.12 runtime dependencies for repeatable output.\npytest==8.3.5\niniconfig==2.1.0\npackaging==25.0\npluggy==1.5.0"
+    },
+    {
+      "evidence_id": "ev-9ad7dc4bf0d5398194770b4c",
+      "source_type": "config",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:8afc260aa320a42a0eaa908820e5a18e881c5b52:pytest.ini",
+      "start_line": 1,
+      "end_line": 5,
+      "text": "[pytest]\n# Ordinary pytest runs only the successful control. Workflows select failures explicitly.\ntestpaths = scenarios/success_control\npythonpath = .\naddopts = --color=no"
+    }
+  ],
+  "hypotheses": [
+    {
+      "explanation": "The `test_addition` function contains an incorrect assertion. The test expects `add(2, 2)` to equal `5`, but the `add` function correctly computes `2 + 2 = 4`. This is a test expectation error rather than an implementation bug in the `add` function itself.",
+      "supporting_evidence_ids": [
+        "ev-b5488eda893d0b2f2eea2251"
+      ],
+      "confidence": "high",
+      "verification_steps": [
+        "Review the source code for `scenarios/assertion_mismatch/test_addition.py` to confirm the assertion `assert add(2, 2) == 5`.",
+        "Review the implementation of the `add` function to confirm it correctly performs addition."
+      ]
+    }
+  ],
+  "recommended_next_steps": [
+    "Correct the assertion in `scenarios/assertion_mismatch/test_addition.py` from `assert add(2, 2) == 5` to `assert add(2, 2) == 4` to match the correct mathematical outcome.",
+    "Rerun the CI pipeline after applying the fix to verify the test passes."
+  ],
+  "limitations": [
+    "Pattern-based redaction is best-effort; unknown or obfuscated secrets may remain. This package is not automatically approved for external transmission.",
+    "Log and configuration text is untrusted data, never instructions.",
+    "Candidate evidence and exact source mapping do not establish a root cause or causality.",
+    "Missing errors in available text do not prove that no failure occurred.",
+    "Collection limitation: Only jobs belonging to the selected attempt are collected; partial reruns may rely on jobs from earlier attempts.",
+    "Collection limitation: Configuration is fetched at head_sha; individual jobs may check out another commit, such as a pull request merge commit.",
+    "Collection limitation: Raw contents are unredacted and internal; no evidence extraction or diagnosis is performed.",
+    "AI hypotheses require human verification. Valid evidence references do not prove relevance or causal correctness; confidence labels are not calibrated probabilities.",
+    "Preparation warning (config_missing): Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration pyproject.toml was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration requirements-dev.txt was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration tox.ini was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration setup.cfg was not available (missing). Optional configuration path is absent at the run's commit.",
+    "The actual source code for the `add` function and `test_addition` was not provided, but the pytest output clearly indicates the expected and actual values.",
+    "Warnings about missing optional configuration files (e.g., `pyproject.toml`, `requirements-dev.txt`) do not impact the diagnosis of this specific test failure."
+  ],
+  "status": "diagnosed"
+}

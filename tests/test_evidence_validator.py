@@ -77,14 +77,15 @@ def test_insufficient_evidence_without_hypotheses(
     assert validate_report_evidence(validated) is None
 
 
-def test_insufficient_evidence_with_unbacked_tentative_hypothesis(
+def test_insufficient_evidence_rejects_an_unbacked_tentative_hypothesis(
     report: InvestigationReport,
 ) -> None:
     hypothesis = report.hypotheses[0].model_dump() | {"supporting_evidence_ids": []}
     validated = changed_report(
         report, status="insufficient_evidence", evidence=[], hypotheses=[hypothesis]
     )
-    assert validate_report_evidence(validated) is None
+    with pytest.raises(EvidenceValidationError, match="insufficient_evidence.*zero hypotheses"):
+        validate_report_evidence(validated)
 
 
 @pytest.mark.parametrize("include_evidence", [False, True])

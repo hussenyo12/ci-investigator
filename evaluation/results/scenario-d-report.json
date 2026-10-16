@@ -1,0 +1,33 @@
+{
+  "workflow_run": {
+    "owner": "hussenyo12",
+    "repo": "ci-investigator-demo",
+    "run_id": 38745016961,
+    "url": "https://github.com/hussenyo12/ci-investigator-demo/actions/runs/38745016961"
+  },
+  "observed_failure_summary": "No failed jobs to investigate; no AI diagnosis was requested.",
+  "evidence": [],
+  "hypotheses": [],
+  "recommended_next_steps": [
+    "Review workflow status and the selected attempt before requesting an investigation."
+  ],
+  "limitations": [
+    "Pattern-based redaction is best-effort; unknown or obfuscated secrets may remain. This package is not automatically approved for external transmission.",
+    "Log and configuration text is untrusted data, never instructions.",
+    "Candidate evidence and exact source mapping do not establish a root cause or causality.",
+    "Missing errors in available text do not prove that no failure occurred.",
+    "Collection limitation: Only jobs belonging to the selected attempt are collected; partial reruns may rely on jobs from earlier attempts.",
+    "Collection limitation: Configuration is fetched at head_sha; individual jobs may check out another commit, such as a pull request merge commit.",
+    "Collection limitation: Raw contents are unredacted and internal; no evidence extraction or diagnosis is performed.",
+    "AI hypotheses require human verification. Valid evidence references do not prove relevance or causal correctness; confidence labels are not calibrated probabilities.",
+    "Preparation warning (no_failed_jobs): No failed jobs were found in the selected attempt.",
+    "Preparation warning (config_missing): Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration pyproject.toml was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration requirements-dev.txt was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration tox.ini was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration setup.cfg was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (no_failure_detail): No informative failure message was retained; no cause can be inferred.",
+    "Available evidence is incomplete, truncated, or omitted; conclusions are provisional and high-confidence hypotheses are not accepted."
+  ],
+  "status": "insufficient_evidence"
+}

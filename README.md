@@ -225,6 +225,10 @@ truncation, omitted context, unfinished attempts, retrieval failures, and unknow
 warnings remain substantive gaps. Useful incomplete evidence can be investigated,
 but all pipeline warnings/limitations remain visible and high-confidence hypotheses
 are rejected. Completeness alone does not justify a high-confidence conclusion.
+For a completed success with zero failed jobs, the `no_failed_jobs` observation
+also remains visible without setting `incomplete`; genuine collection problems
+still set it. `insufficient_evidence` requires zero hypotheses, and contradictory
+model output is rejected as `STATUS_INCONSISTENT` within the existing retry bound.
 The model can abstain too. Invalid drafts report only a fixed `reason_code` and
 `attempt_count` (one or two), never model text or supplied reference values. The
 category describes the final rejected attempt; schema, unknown/duplicate/missing
@@ -331,8 +335,8 @@ Invalid inputs raise `WorkflowRunURLParseError`.
 Call `validate_report_evidence` after constructing a report and before consuming
 or displaying it; model construction alone does not validate reference integrity.
 It raises `EvidenceValidationError` for inconsistent references. Reports marked
-`insufficient_evidence` can contain no evidence or hypotheses. Suggested
-verification and next steps must be nonempty; limitations may be an empty list.
+`insufficient_evidence` require zero hypotheses and may retain evidence.
+Suggested verification and next steps must be nonempty; limitations may be an empty list.
 
 Evidence uses inclusive, one-based original source line numbers and preserves
 text whitespace. Validation checks field shape and reference integrity; it does
@@ -346,6 +350,10 @@ Vertex AI → deterministic reference validation → Streamlit presentation. Pre
 redacts before selection and verifies source provenance. Gemini diagnosis now
 feeds the validated CLI report; Streamlit remains unimplemented.
 See [architecture](docs/architecture.md) and the [development log](docs/development_log.md).
+
+Historical sanitized real-evaluation reports, request counts, and review caveats
+are preserved under [evaluation/](evaluation/README.md). They predate F-009 and
+retain their original results; C has a verification note because its JSON is unavailable.
 
 `.env.example` documents the optional GitHub token and current Vertex AI defaults.
 It is documentation, not an automatically loaded configuration file.

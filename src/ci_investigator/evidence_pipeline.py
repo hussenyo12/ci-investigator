@@ -67,6 +67,14 @@ def _has_collection_gaps(collection: CollectionResult, sources: list[SanitizedSo
         for file in collection.configurations
         if file.path in incidental
     }
+    complete_success = (
+        collection.outcome == "successful"
+        and collection.workflow is not None
+        and collection.workflow.status == "completed"
+        and collection.workflow.conclusion == "success"
+        and collection.failed_job_count == 0
+        and not collection.failed_jobs
+    )
     return (
         collection.outcome in {"incomplete", "insufficient_data", "inaccessible"}
         or collection.failed_job_count > len(collection.failed_jobs)
@@ -77,8 +85,13 @@ def _has_collection_gaps(collection: CollectionResult, sources: list[SanitizedSo
             for file in collection.configurations
         )
         or any(
-            warning.code != "config_missing"
-            or warning.source_identifier not in incidental_identities
+            not (
+                (
+                    warning.code == "config_missing"
+                    and warning.source_identifier in incidental_identities
+                )
+                or (complete_success and warning.code == "no_failed_jobs")
+            )
             for warning in collection.warnings
         )
     )

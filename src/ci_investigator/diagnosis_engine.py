@@ -78,7 +78,9 @@ def _reject_constant(value: str) -> None:
 
 def _validate_draft_references(draft: DiagnosisDraft, package: PreparedEvidencePackage) -> None:
     """Classify failures without parsing validator messages containing model-supplied IDs."""
-    if draft.status == "diagnosed" and not draft.hypotheses:
+    if (draft.status == "diagnosed" and not draft.hypotheses) or (
+        draft.status == "insufficient_evidence" and draft.hypotheses
+    ):
         raise InvalidDiagnosisResponse(ValidationFailureReason.STATUS_INCONSISTENT)
     evidence_ids = {item.evidence_id for item in package.evidence}
     for hypothesis in draft.hypotheses:

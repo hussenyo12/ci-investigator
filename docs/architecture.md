@@ -20,8 +20,9 @@ the same evidence. Each hypothesis must avoid repeated references, and every
 reference must resolve to exactly one evidence record. A `diagnosed` report must
 contain at least one hypothesis, and every hypothesis must reference at least one
 existing evidence ID, regardless of its confidence label. An `insufficient_evidence`
-report may omit hypotheses entirely or contain tentative hypotheses with no
-references. Any references it includes must still pass the integrity checks.
+report must have zero hypotheses; it may retain evidence. The separate semantic
+validator rejects contradictory status/hypothesis combinations as well as broken
+references. Pydantic shape validation alone does not enforce these cross-field rules.
 
 This separation permits parsing a well-shaped AI candidate before checking its
 links. Consumers must run reference validation before accepting a report, and run
@@ -568,8 +569,8 @@ Application code constructs `InvestigationReport` using package identity and all
 prepared `Evidence`, redacts generated descriptive text best-effort, and calls
 `validate_report_evidence()`. That validator rejects unknown/repeated references,
 duplicate evidence records, diagnosed reports without hypotheses, and every
-unsupported diagnosed hypothesis. The engine additionally requires support for
-tentative hypotheses too. Shared citations across distinct hypotheses are valid.
+unsupported diagnosed hypothesis. An `insufficient_evidence` draft must have zero
+hypotheses. Shared citations across distinct diagnosed hypotheses are valid.
 Invalid responses are never displayed as accepted reports.
 
 A complete text draft that fails schema, references, or confidence policy permits
@@ -585,7 +586,8 @@ model-generated strings or offending IDs: `SCHEMA_INVALID`,
 `UNKNOWN_EVIDENCE_REFERENCE`, `DUPLICATE_EVIDENCE_REFERENCE`,
 `MISSING_EVIDENCE_REFERENCE`, `HIGH_CONFIDENCE_INCOMPLETE`, `STATUS_INCONSISTENT`,
 and `OTHER_VALIDATION_FAILURE`. JSON/strict shape errors are schema failures;
-`diagnosed` with no hypotheses is a status inconsistency. Draft references are
+`diagnosed` with no hypotheses or `insufficient_evidence` with any hypotheses is
+a status inconsistency. Draft references are
 classified directly before trusted report assembly; the existing report validator
 still runs afterward. No validator exception text is parsed to infer a category.
 The CLI reports a fixed rejection message, final-attempt category, and bounded
@@ -613,6 +615,14 @@ collection warnings remain substantive gaps. Warning exemptions require a matchi
 missing optional-file record and source identity; warning prose never overrides
 completeness. Reprepare older packages to apply the refined classification; the
 engine still honors an explicitly supplied `incomplete=True`.
+
+F-009 additionally exempts `no_failed_jobs` only when trusted collection metadata
+agrees on a completed successful workflow, zero failed-job count, and no failed
+job records. This is an expected no-failure observation, not a missing-log gap.
+The warning and all preparation limitations remain visible. Other warnings and
+retrieval errors, truncated sources, incomplete attempts, missing expected failure
+logs, and evidence omissions retain their existing gap checks. The local abstention
+guard still runs before model/ADC initialization.
 
 Literal path mentions are a conservative relevance heuristic, not semantic
 analysis. Comments can cause false positives, and indirect/dynamic references may
@@ -652,6 +662,14 @@ reasoning/injection resistance. `scripts/gemini_smoke_test.py --allow-external-a
 provides one explicitly authorized synthetic request with response retries disabled;
 the [README](../README.md#one-authorized-synthetic-live-smoke-test) records its exact
 scope. No live diagnosis call was made for this task.
+
+Historical live A/B/D reports and measured request counters are preserved under
+[evaluation](../evaluation/README.md), together with caveats about A's ground-truth
+hint and B's excessive confidence. Original report bytes, including D's pre-fix
+F-009 limitation, remain unchanged. Metadata uses relative artifact paths and a
+hash manifest. C's missing JSON is represented by a separate verification note,
+not reconstructed output. These artifacts are human evaluation records and are
+not read by the evidence pipeline or diagnosis prompt builder.
 
 ## Trade-offs and limitations
 

@@ -88,7 +88,7 @@ class Hypothesis(_Model):
 
 
 class InvestigationReport(_Model):
-    """A report may explicitly decline to diagnose when evidence is insufficient."""
+    """Shape only; the report validator requires abstentions to have no hypotheses."""
 
     workflow_run: WorkflowRunReference
     observed_failure_summary: NonEmptyText

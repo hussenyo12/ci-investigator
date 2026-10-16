@@ -1,14 +1,14 @@
-"""Check reference integrity, without judging the truth of any hypothesis."""
+"""Check status consistency and reference integrity, without judging hypothesis truth."""
 
 from ci_investigator.schemas import InvestigationReport
 
 
 class EvidenceValidationError(ValueError):
-    """An investigation report has inconsistent evidence references."""
+    """An investigation report has inconsistent status, hypotheses, or evidence references."""
 
 
 def validate_report_evidence(report: InvestigationReport) -> None:
-    """Check records, references, and support for every diagnosed hypothesis.
+    """Check status consistency, records, references, and support for every diagnosis.
 
     A successful check means that the references resolve. It does not mean that
     evidence is authentic or that the referenced text proves a hypothesis.
@@ -38,3 +38,5 @@ def validate_report_evidence(report: InvestigationReport) -> None:
 
     if report.status == "diagnosed" and not report.hypotheses:
         raise EvidenceValidationError("diagnosed report requires at least one hypothesis")
+    if report.status == "insufficient_evidence" and report.hypotheses:
+        raise EvidenceValidationError("insufficient_evidence report requires zero hypotheses")

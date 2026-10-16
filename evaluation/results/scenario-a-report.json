@@ -1,0 +1,87 @@
+{
+  "workflow_run": {
+    "owner": "hussenyo12",
+    "repo": "ci-investigator-demo",
+    "run_id": 38744921607,
+    "url": "https://github.com/hussenyo12/ci-investigator-demo/actions/runs/38744921607"
+  },
+  "observed_failure_summary": "The CI pipeline failed during test collection with a ModuleNotFoundError for the 'yaml' module. The test file 'scenarios/missing_dependency/test_yaml.py' attempted to import 'yaml', but the module was not found, leading to an error during pytest collection and a non-zero exit code.",
+  "evidence": [
+    {
+      "evidence_id": "ev-119267dc9dc9d3b69ff2ad3f",
+      "source_type": "log",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:run:38744921607:attempt:1:job:116455976160:log",
+      "start_line": 200,
+      "end_line": 222,
+      "text": "2026-10-15T13:42:15.4240010Z   Python3_ROOT_DIR: /opt/hostedtoolcache/Python/3.12.15/x64\n2026-10-15T13:42:15.4240310Z   LD_LIBRARY_PATH: /opt/hostedtoolcache/Python/3.12.15/x64/lib\n2026-10-15T13:42:15.4240585Z ##[endgroup]\n2026-10-15T13:42:15.9595068Z \n2026-10-15T13:42:15.9595740Z ==================================== ERRORS ====================================\n2026-10-15T13:42:15.9596275Z __________ ERROR collecting scenarios/missing_dependency/test_yaml.py __________\n2026-10-15T13:42:15.9596913Z ImportError while importing test module '/home/runner/work/ci-investigator-demo/ci-investigator-demo/scenarios/missing_dependency/test_yaml.py'.\n2026-10-15T13:42:15.9597528Z Hint: make sure your test modules/packages have valid Python names.\n2026-10-15T13:42:15.9597854Z Traceback:\n2026-10-15T13:42:15.9598181Z /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/importlib/__init__.py:90: in import_module\n2026-10-15T13:42:15.9598616Z     return _bootstrap._gcd_import(name[level:], package, level)\n2026-10-15T13:42:15.9598960Z scenarios/missing_dependency/test_yaml.py:3: in <module>\n2026-10-15T13:42:15.9599215Z     import yaml\n2026-10-15T13:42:15.9599439Z E   ModuleNotFoundError: No module named 'yaml'\n2026-10-15T13:42:15.9599735Z =========================== short test summary info ============================\n2026-10-15T13:42:15.9600029Z ERROR scenarios/missing_dependency/test_yaml.py\n2026-10-15T13:42:15.9600335Z !!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n2026-10-15T13:42:15.9600659Z 1 error in 0.09s\n2026-10-15T13:42:15.9801597Z ##[error]Process completed with exit code 2.\n2026-10-15T13:42:15.9919914Z Post job cleanup.\n2026-10-15T13:42:16.0591302Z [command]/usr/bin/git version\n2026-10-15T13:42:16.0626538Z git version 2.55.0\n2026-10-15T13:42:16.0657825Z Temporarily overriding HOME='/home/runner/work/_temp/8c873a32-5896-45d6-979a-63b631886bc1' before making global git config changes"
+    },
+    {
+      "evidence_id": "ev-95ea17f4874a7356a6b75973",
+      "source_type": "log",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:run:38744921607:attempt:1:job:116455976160:log",
+      "start_line": 223,
+      "end_line": 223,
+      "text": "2026-10-15T13:42:16.0658876Z Adding repository directory to the temporary git global config as a safe directory"
+    },
+    {
+      "evidence_id": "ev-86fe55bdcdfd5b39b153d20c",
+      "source_type": "config",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:8afc260aa320a42a0eaa908820e5a18e881c5b52:.github/workflows/01-missing-dependency.yml",
+      "start_line": 17,
+      "end_line": 30,
+      "text": "      - name: Check out repository\n        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6\n        with:\n          persist-credentials: [REDACTED:SECRET]\n      - name: Set up Python 3.12\n        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6\n        with:\n          python-version: \"3.12\"\n      - name: Create isolated environment and install declared dependencies\n        run: |\n          python -I -m venv .venv\n          .venv/bin/python -I -m pip --isolated install --disable-pip-version-check --no-input -r requirements.txt\n      - name: Run test requiring the undeclared dependency\n        run: .venv/bin/python -I -m pytest -q scenarios/missing_dependency/test_yaml.py"
+    },
+    {
+      "evidence_id": "ev-ce5b8ea411447834a78c5d08",
+      "source_type": "config",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:8afc260aa320a42a0eaa908820e5a18e881c5b52:requirements.txt",
+      "start_line": 1,
+      "end_line": 6,
+      "text": "# Scenario A deliberately omits PyYAML. Keep it absent from this file.\n# Pin pytest and its Python 3.12 runtime dependencies for repeatable output.\npytest==8.3.5\niniconfig==2.1.0\npackaging==25.0\npluggy==1.5.0"
+    },
+    {
+      "evidence_id": "ev-9ad7dc4bf0d5398194770b4c",
+      "source_type": "config",
+      "source_identifier": "github:hussenyo12/ci-investigator-demo:8afc260aa320a42a0eaa908820e5a18e881c5b52:pytest.ini",
+      "start_line": 1,
+      "end_line": 5,
+      "text": "[pytest]\n# Ordinary pytest runs only the successful control. Workflows select failures explicitly.\ntestpaths = scenarios/success_control\npythonpath = .\naddopts = --color=no"
+    }
+  ],
+  "hypotheses": [
+    {
+      "explanation": "The Python test 'scenarios/missing_dependency/test_yaml.py' attempts to import the 'yaml' module, but the 'PyYAML' package (which provides the 'yaml' module) is not listed in 'requirements.txt'. The CI workflow explicitly installs dependencies only from 'requirements.txt', leading to the 'ModuleNotFoundError' when the test is collected.",
+      "supporting_evidence_ids": [
+        "ev-119267dc9dc9d3b69ff2ad3f",
+        "ev-86fe55bdcdfd5b39b153d20c",
+        "ev-ce5b8ea411447834a78c5d08"
+      ],
+      "confidence": "high",
+      "verification_steps": [
+        "Add 'PyYAML' to the 'requirements.txt' file and re-run the CI pipeline to confirm that the 'ModuleNotFoundError' is resolved.",
+        "If 'yaml' is not an intended dependency for this test, modify 'scenarios/missing_dependency/test_yaml.py' to remove the 'import yaml' statement and re-run the CI pipeline."
+      ]
+    }
+  ],
+  "recommended_next_steps": [
+    "Review 'scenarios/missing_dependency/test_yaml.py' to determine if the 'yaml' module is a necessary dependency. If it is, add 'PyYAML' to 'requirements.txt'.",
+    "If 'yaml' is not a necessary dependency, remove the 'import yaml' statement from 'scenarios/missing_dependency/test_yaml.py'."
+  ],
+  "limitations": [
+    "Pattern-based redaction is best-effort; unknown or obfuscated secrets may remain. This package is not automatically approved for external transmission.",
+    "Log and configuration text is untrusted data, never instructions.",
+    "Candidate evidence and exact source mapping do not establish a root cause or causality.",
+    "Missing errors in available text do not prove that no failure occurred.",
+    "Collection limitation: Only jobs belonging to the selected attempt are collected; partial reruns may rely on jobs from earlier attempts.",
+    "Collection limitation: Configuration is fetched at head_sha; individual jobs may check out another commit, such as a pull request merge commit.",
+    "Collection limitation: Raw contents are unredacted and internal; no evidence extraction or diagnosis is performed.",
+    "AI hypotheses require human verification. Valid evidence references do not prove relevance or causal correctness; confidence labels are not calibrated probabilities.",
+    "Preparation warning (config_missing): Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration pyproject.toml was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration requirements-dev.txt was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration tox.ini was not available (missing). Optional configuration path is absent at the run's commit.",
+    "Preparation warning (configuration_unavailable): Configuration setup.cfg was not available (missing). Optional configuration path is absent at the run's commit.",
+    "The diagnosis is based on the provided logs and configuration files. No external context or runtime environment details beyond what is logged are available."
+  ],
+  "status": "diagnosed"
+}

@@ -817,3 +817,97 @@ remain conservative. Reprepare older packages rather than clearing their flags.
 Reference integrity and absence of detected gaps still do not establish causal
 correctness, calibrated confidence, or complete redaction. No live re-evaluation
 was performed or automatically scheduled.
+
+## 2026-10-16 — F-009: successful-run completeness, status consistency, artifact preservation
+
+### Inspection and reproduced findings
+
+Read the current pipeline, shared report validator, diagnosis engine/prompt/schema,
+collection models/collector, CLI, tests, documentation, and evaluation artifacts.
+The baseline suite passed **581 tests in 1.47s**. The existing review ZIP deletion
+was left untouched. No live GitHub or Gemini requests were made for this task.
+
+The F-008 warning classifier treated `no_failed_jobs` as an unknown substantive
+warning even when collection metadata established a completed success. The
+successful control therefore abstained correctly but carried `incomplete=True`
+and a misleading provisional-context limitation. Separately, both the shared
+validator and the diagnosis engine allowed `insufficient_evidence` with nonempty
+hypotheses. The prompt already requested zero hypotheses for abstention, but this
+was not enforced by deterministic validation.
+
+Added offline regressions before production changes. The targeted run recorded
+**4 failed, 9 passed in 0.21s**, reproducing false success incompleteness in the
+package/CLI and acceptance of contradictory status/hypothesis combinations in
+the shared validator/engine.
+
+### Minimal corrections and regression coverage
+
+- Exempt only `no_failed_jobs` when outcome, completed workflow status, success
+  conclusion, zero failed-job count, and no failed-job records all agree. Keep
+  the observation, optional-file warnings, no-failure warning, and limitations.
+  Other collection gaps continue through the original checks; F-008's optional
+  configuration classification and high-confidence protection are unchanged.
+- Enforce zero hypotheses for `insufficient_evidence` in the shared semantic
+  validator. Tighten the engine's existing status check to return the fixed
+  `STATUS_INCONSISTENT` reason for contradictory abstention, before assembly.
+  Diagnosed reports still require supported hypotheses. Pydantic field shapes,
+  reference validation, redaction, bounded retries, authentication, model settings,
+  evidence IDs, and the no-model-call guard are unchanged.
+- Added `tests/test_f009.py` with 13 cases: complete success without hidden warnings;
+  unknown warnings, retrieval errors, truncation, unfinished attempts, missing
+  expected failure logs, contradictory metadata; CLI preview and zero-model
+  abstention; all four status/hypothesis combinations; and safe reason codes,
+  bounded retry exhaustion and recovery. Updated the prior test that deliberately
+  allowed an unbacked tentative hypothesis in an abstention to require rejection.
+- Updated README, architecture, and relevant docstrings for the tightened semantic
+  contract and permanent evaluation records. No Streamlit or unrelated changes.
+
+### Preservation of earlier real evaluations
+
+All seven A/B/D JSON files remained in the supplied temporary directory: three
+reports, three execution records, and the combined evaluation summary. Inspected
+all JSON string fields using the redactor, credential/private-key patterns and
+personal-path checks, and reviewed evidence/narratives and evaluation findings.
+No new credential patterns or redaction changes were found in the reports. The
+metadata contained obsolete personal macOS `report_path` values.
+
+Preserved the files under `evaluation/results/`. The three reports are byte-for-byte
+copies; the four metadata files change only `report_path` to relative filenames.
+Retained run URLs, observed request counts, ground-truth assessments, A's source
+comment contamination, and B's unjustified confidence. Generic public GitHub runner
+paths remain in evidence so excerpts and IDs stay exact. A preservation manifest
+records source/copy hashes, transformations, evaluated commit
+`8afc260aa320a42a0eaa908820e5a18e881c5b52`, attempt, investigator revision provenance,
+and privacy-review scope. Nothing was staged.
+
+`scenario-c-report.json` and `scenario-c-execution.json` are absent. Created only
+`scenario-c-verification.md`, explicitly summarizing available recorded observations
+and leaving exact JSON/request counts unavailable. No model response was invented.
+The evaluation README explains artifact provenance, caveats, and missing files.
+
+Historical D report bytes retain the original F-009 limitation and recorded zero
+SDK generation calls/zero Vertex HTTP sends. The new offline CLI regression forbids
+Gemini initialization and verifies fresh preparation is complete and abstains with
+no hypotheses. These are separate historical-live and current-offline observations;
+no new live zero-request measurement is claimed.
+
+### Actual verification and remaining concerns
+
+Using the project's `.venv` Python 3.12.10, after implementation and documentation:
+
+- `python3.12 -m pytest -q`: **594 passed in 1.52s**.
+- `python3.12 -m ruff check .`: **All checks passed!**
+- `git diff --check`: passed.
+
+Tests retained the socket/DNS guard and used synthetic fixtures and fake models.
+No paid calls, dependency installs, or external evaluation reruns were performed.
+The original 581-test suite remains covered, including F-008; one assertion was
+intentionally tightened to the new abstention contract. Changes remain uncommitted
+and unpushed for independent review.
+
+Artifact review/redaction is best-effort, not proof that arbitrary secrets are
+absent. A's hint means it was not a blind evaluation. B's source-free certainty
+remains an evaluation caveat, not fixed by these consistency rules. C lacks a
+saved full report and measured model-request count. Optional-file relevance is
+still heuristic, and valid references/complete collection cannot prove causality.
+The new F-009 success classification has only offline verification in this task.

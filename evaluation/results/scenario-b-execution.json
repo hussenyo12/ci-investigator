@@ -1,0 +1,11 @@
+{
+  "scenario": "B",
+  "url": "https://github.com/hussenyo12/ci-investigator-demo/actions/runs/38744971088",
+  "exit_code": 0,
+  "counts": {
+    "sdk_generation_calls": 1,
+    "vertex_http_send_attempts": 1
+  },
+  "reference_validation": "passed",
+  "report_path": "scenario-b-report.json"
+}

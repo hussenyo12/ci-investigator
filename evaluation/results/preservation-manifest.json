@@ -1,0 +1,70 @@
+{
+  "evaluation_date": "2026-10-16",
+  "artifact_origin": "Previously saved live evaluation files; no new live requests during preservation.",
+  "evaluated_repository": "hussenyo12/ci-investigator-demo",
+  "evaluated_commit_sha": "8afc260aa320a42a0eaa908820e5a18e881c5b52",
+  "commit_provenance": "A/B: configuration source identifiers in preserved reports. C/D: recorded evidence-preview observations in this session.",
+  "selected_attempt": 1,
+  "investigator_revision_at_evaluation": {
+    "head_commit": "fbc7552fbfaf4d4cca463601b1d0f967051f1627",
+    "working_tree": "Included the then-uncommitted F-008 fix; F-009 was not present.",
+    "subsequent_f008_commit": "d45bab6"
+  },
+  "historical_reports_not_rewritten": true,
+  "missing_files": [
+    "scenario-c-report.json",
+    "scenario-c-execution.json"
+  ],
+  "scenario_c_record": "scenario-c-verification.md",
+  "privacy_review": {
+    "reports": "Reviewed JSON fields, evidence and narratives; no new redaction changes or credential patterns found.",
+    "metadata": "Replaced temporary macOS report paths with relative filenames; all other values preserved.",
+    "ci_paths": "Generic public GitHub runner paths retained in evidence to preserve exact excerpts and IDs.",
+    "limitation": "Pattern-based checks and manual review are best-effort, not proof that arbitrary secrets are absent."
+  },
+  "files": {
+    "scenario-a-report.json": {
+      "source_sha256": "662cfc80df341eed95f952513feca012784ffaadb5efa57d80fc252e784c8867",
+      "preserved_sha256": "662cfc80df341eed95f952513feca012784ffaadb5efa57d80fc252e784c8867",
+      "changes": []
+    },
+    "scenario-a-execution.json": {
+      "source_sha256": "21cbb34fd4baf50d3324a1d7daa6197d58ab765fed98cdbaab6144b5da15e0a4",
+      "preserved_sha256": "665a6f58095a754c2275a2bd0f68f9534074c5b732db7f30959e761c5aa0353f",
+      "changes": [
+        "report_path values changed to relative filenames"
+      ]
+    },
+    "scenario-b-report.json": {
+      "source_sha256": "758ac78c6ce3b9c1b48df2f68c25cc1ae0dc20fffef057e469dc31ba778a6383",
+      "preserved_sha256": "758ac78c6ce3b9c1b48df2f68c25cc1ae0dc20fffef057e469dc31ba778a6383",
+      "changes": []
+    },
+    "scenario-b-execution.json": {
+      "source_sha256": "7771c1cf88e76e93c9291ddb4121a6dc8942c7e0d678618302f1de3667c233d7",
+      "preserved_sha256": "5549efbf0c3394d10789d1f8ccb949f87941031339277c27e473a11ee3bdd36b",
+      "changes": [
+        "report_path values changed to relative filenames"
+      ]
+    },
+    "scenario-d-report.json": {
+      "source_sha256": "a6738868f5c42df83380a1a308f89dcd66334e186015e369a2f7b6c9eb8ec893",
+      "preserved_sha256": "a6738868f5c42df83380a1a308f89dcd66334e186015e369a2f7b6c9eb8ec893",
+      "changes": []
+    },
+    "scenario-d-execution.json": {
+      "source_sha256": "31f276a26caa802ae052d8b4eb3d3add878d1c8d4df8ae35dcbf1596061eb28b",
+      "preserved_sha256": "8b51117b5c4ce30c5e29a3bf87a8d52a6d80754061249fc7b36ba24aaa54777d",
+      "changes": [
+        "report_path values changed to relative filenames"
+      ]
+    },
+    "evaluation-summary.json": {
+      "source_sha256": "1436118efbf9762ba53a9f52d78f77301ffe7b5839cacee0d5ce64a9a0403ddc",
+      "preserved_sha256": "522ccc119a1fc99b2d6eab58c8b44b99944e6effe26b09b23119df16e5cd6a84",
+      "changes": [
+        "report_path values changed to relative filenames"
+      ]
+    }
+  }
+}

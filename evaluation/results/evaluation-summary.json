@@ -1,0 +1,99 @@
+{
+  "cli_invocations": 3,
+  "manual_retries": 0,
+  "instrumentation": "Read-only sys.setprofile observer counted SDK generate_content entries and Vertex HTTPX send attempts; no request arguments altered or prompt content inspected.",
+  "billing_caveat": "Observed HTTP send attempts are not independent billing records.",
+  "scenarios": {
+    "A": {
+      "run_url": "https://github.com/hussenyo12/ci-investigator-demo/actions/runs/38744921607",
+      "cli_exit_code": 0,
+      "report_status": "diagnosed",
+      "reference_validation": "passed",
+      "evidence_ids_match_prior_preview": true,
+      "observed_failure_summary": "The CI pipeline failed during test collection with a ModuleNotFoundError for the 'yaml' module. The test file 'scenarios/missing_dependency/test_yaml.py' attempted to import 'yaml', but the module was not found, leading to an error during pytest collection and a non-zero exit code.",
+      "hypotheses": [
+        {
+          "explanation": "The Python test 'scenarios/missing_dependency/test_yaml.py' attempts to import the 'yaml' module, but the 'PyYAML' package (which provides the 'yaml' module) is not listed in 'requirements.txt'. The CI workflow explicitly installs dependencies only from 'requirements.txt', leading to the 'ModuleNotFoundError' when the test is collected.",
+          "supporting_evidence_ids": [
+            "ev-119267dc9dc9d3b69ff2ad3f",
+            "ev-86fe55bdcdfd5b39b153d20c",
+            "ev-ce5b8ea411447834a78c5d08"
+          ],
+          "confidence": "high",
+          "verification_steps": [
+            "Add 'PyYAML' to the 'requirements.txt' file and re-run the CI pipeline to confirm that the 'ModuleNotFoundError' is resolved.",
+            "If 'yaml' is not an intended dependency for this test, modify 'scenarios/missing_dependency/test_yaml.py' to remove the 'import yaml' statement and re-run the CI pipeline."
+          ]
+        }
+      ],
+      "recommended_next_steps": [
+        "Review 'scenarios/missing_dependency/test_yaml.py' to determine if the 'yaml' module is a necessary dependency. If it is, add 'PyYAML' to 'requirements.txt'.",
+        "If 'yaml' is not a necessary dependency, remove the 'import yaml' statement from 'scenarios/missing_dependency/test_yaml.py'."
+      ],
+      "observed_counts": {
+        "sdk_generation_calls": 1,
+        "vertex_http_send_attempts": 1
+      },
+      "report_path": "scenario-a-report.json",
+      "ground_truth_match": "correct",
+      "evaluation_findings": [
+        "The collected requirements.txt comment explicitly reveals that Scenario A deliberately omits PyYAML. The outcome matches ground truth, but this is not a blind evaluation. No user-provided evaluation annotations were injected."
+      ]
+    },
+    "B": {
+      "run_url": "https://github.com/hussenyo12/ci-investigator-demo/actions/runs/38744971088",
+      "cli_exit_code": 0,
+      "report_status": "diagnosed",
+      "reference_validation": "passed",
+      "evidence_ids_match_prior_preview": true,
+      "observed_failure_summary": "A Python pytest run failed because an assertion in `test_addition` expected `add(2, 2)` to return `5`, but the function correctly returned `4`. The CI job exited with code 1.",
+      "hypotheses": [
+        {
+          "explanation": "The `test_addition` function contains an incorrect assertion. The test expects `add(2, 2)` to equal `5`, but the `add` function correctly computes `2 + 2 = 4`. This is a test expectation error rather than an implementation bug in the `add` function itself.",
+          "supporting_evidence_ids": [
+            "ev-b5488eda893d0b2f2eea2251"
+          ],
+          "confidence": "high",
+          "verification_steps": [
+            "Review the source code for `scenarios/assertion_mismatch/test_addition.py` to confirm the assertion `assert add(2, 2) == 5`.",
+            "Review the implementation of the `add` function to confirm it correctly performs addition."
+          ]
+        }
+      ],
+      "recommended_next_steps": [
+        "Correct the assertion in `scenarios/assertion_mismatch/test_addition.py` from `assert add(2, 2) == 5` to `assert add(2, 2) == 4` to match the correct mathematical outcome.",
+        "Rerun the CI pipeline after applying the fix to verify the test passes."
+      ],
+      "observed_counts": {
+        "sdk_generation_calls": 1,
+        "vertex_http_send_attempts": 1
+      },
+      "report_path": "scenario-b-report.json",
+      "ground_truth_match": "correct",
+      "evaluation_findings": [
+        "The log supports the expected/actual mismatch. The summary and high-confidence hypothesis overstate implementation correctness without the function source or an independently established behavior contract; the report also acknowledges the missing source and recommends review."
+      ]
+    },
+    "D": {
+      "run_url": "https://github.com/hussenyo12/ci-investigator-demo/actions/runs/38745016961",
+      "cli_exit_code": 0,
+      "report_status": "insufficient_evidence",
+      "reference_validation": "passed",
+      "evidence_ids_match_prior_preview": true,
+      "observed_failure_summary": "No failed jobs to investigate; no AI diagnosis was requested.",
+      "hypotheses": [],
+      "recommended_next_steps": [
+        "Review workflow status and the selected attempt before requesting an investigation."
+      ],
+      "observed_counts": {
+        "sdk_generation_calls": 0,
+        "vertex_http_send_attempts": 0
+      },
+      "report_path": "scenario-d-report.json",
+      "ground_truth_match": "abstained",
+      "evaluation_findings": [
+        "Zero generation calls and zero Vertex HTTP sends were observed live. The known F-009 incompleteness limitation remains in the abstention report."
+      ]
+    }
+  }
+}
